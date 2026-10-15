@@ -1,0 +1,4 @@
+* text=auto eol=lf
+samples/** -text
+tests/**/cases/** -text
+*.bin -text
