@@ -77,6 +77,7 @@
     "size": 25
   },
   "status": "partial",
+  "variant": null,
   "warnings": [
     "truncated at offset 23: expected 5 values, file ends after 2"
   ]

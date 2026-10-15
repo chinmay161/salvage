@@ -6,7 +6,7 @@ import struct
 import tempfile
 import unittest
 
-from salvage.core import pipeline
+from salvage.core import pipeline, validate
 from salvage.formats.stub import MAGIC
 
 PKG = "tests.fixtures.pipeline_formats"
@@ -160,6 +160,40 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(sum(s["by_format"].values()), len(INPUTS))
         on_disk = json.loads(self.tree1["report.json"].decode("utf-8"))
         self.assertEqual(on_disk, self.report)
+
+    def test_every_output_validates(self):
+        for rel, data in sorted(self.tree1.items()):
+            with self.subTest(output=rel):
+                kind = "report" if rel == "report.json" else "output"
+                doc = json.loads(data.decode("utf-8"))
+                self.assertEqual(validate.errors(kind, doc), [])
+                self.assertEqual(doc["schema_version"], "provisional-1")
+
+    def test_identification_fields(self):
+        # Part A: variant null (STUB reports its own name), confidence from the
+        # decoder for decoded/partial, probe score otherwise.
+        for rel, e in self.entries.items():
+            with self.subTest(rel=rel):
+                self.assertIsNone(e["variant"])
+                self.assertIsNone(self.output(rel)["variant"])
+                self.assertEqual(e["confidence"], self.output(rel)["confidence"])
+        self.assertEqual((self.entries["clean.stub"]["confidence"],
+                          self.entries["clean.stub"]["probe_score"]), (1.0, 1.0))
+        self.assertEqual(self.entries["random.bin"]["probe_score"], 0.0)
+        self.assertEqual(self.entries["hang.t"]["probe_score"], 1.0)
+
+    def test_coverage(self):
+        clean = self.entries["clean.stub"]["coverage"]
+        self.assertEqual((clean["bytes_total"], clean["explained_pct"], clean["unexplained"]),
+                         (len(CLEAN), 100.0, []))
+        trunc = self.entries["truncated.stub"]["coverage"]
+        self.assertEqual(trunc["unexplained"], [])         # 2 values read completely
+        self.assertEqual(self.entries["random.bin"]["coverage"]["unexplained"],
+                         [[0, 64 * 1024]])
+        self.assertIsNone(self.entries["empty.bin"]["coverage"]["explained_pct"])
+        for rel in ("hang.t", "crash.t", "raise.t", "bad.t"):
+            self.assertIsNone(self.entries[rel]["coverage"], rel)
+        self.assertEqual(self.entries["big.t"]["coverage"]["bytes_explained"], 0)
 
     def test_deterministic(self):
         self.assertEqual(self.tree1, self.tree2)
