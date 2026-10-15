@@ -38,8 +38,14 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
 - `python tools/task.py docker-run IN OUT`  run the image on IN (read-only), writing to OUT
 - `python tools/task.py docker-test`  run the unit tests with the image's Linux Python
 - `python tools/task.py docker-smoke`  host vs container run; outputs must be byte-identical
+- `python -m salvage.core.validate`  show which output/report schemas are
+  active (official in salvage/core/schemas/official/, else provisional)
 - `make <command>` wraps each of these where make exists
   (`make run IN=... OUT=...`, `make golden FORMAT=stub`, ...)
+
+## Decoders
+- Teammates follow docs/decoder-guide.md; docs/decoder-template.py is the
+  tested skeleton (kept working by tests/core/test_decoder_template.py).
 
 ## Golden tests
 - Cases live in `tests/<format>/cases/`: an input file `<name>` plus

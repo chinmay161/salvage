@@ -4,7 +4,10 @@
 > delivered yet (see `docs/schema-notes.md`). This shape will change when
 > the schema arrives. Only `salvage/core/emit.py` (per-file shape, naming)
 > and `salvage/core/report.py` (report shape) know it, so the change stays
-> in those two modules.
+> in those two modules. The shapes below are written down exactly, as JSON
+> Schemas, in `salvage/core/schemas/output.provisional.json` and
+> `salvage/core/schemas/report.provisional.json`; every document is
+> validated against them before it is written (see "Schema validation").
 
 All output files are UTF-8, LF line endings, `json.dumps(indent=2,
 sort_keys=True, ensure_ascii=False)` plus a final newline, written
@@ -34,6 +37,7 @@ entry gets `"output": null` and an error.
   "schema_version": "provisional-1",
   "source":   {"path": "sub/x.dat", "size": 1234, "sha256": "<hex or null>"},
   "format":   "STUB",
+  "variant":  null,
   "confidence": 1.0,
   "status":   "decoded",
   "records":  [ ... ],
@@ -50,24 +54,35 @@ entry gets `"output": null` and an error.
   `fields` (`name`, `value`, `offset`, `length`, `status`, `evidence`);
   damage holds `start`, `end` (exclusive), `kind`, `reason`; members are
   nested results with a `name`.
-- `warnings` = the decoder's warnings, then pipeline warnings (e.g.
-  `"ambiguous: A, B"`).
+- `warnings` = the decoder's warnings, then core warnings (`"output capped
+  at N records"` / `"... members"`, see "Limits"), then pipeline warnings
+  (e.g. `"ambiguous: A, B"`).
 - `errors` = why a file failed (timeout, crash, read error, ...).
 - `sha256` is `null` only if the file could not be read.
 
-### `format` and `confidence` = identification
+### `format`, `variant` and `confidence` = identification
 
-`format` and `confidence` say what the file was **identified** as, whatever
-happened when decoding it:
+These say what the file was **identified** as, whatever happened when
+decoding it. The same three fields appear in the report entry.
 
-- `format` is the chosen candidate's name if any decoder's probe reached
-  the threshold (0.5), else `"unknown"`. The chosen candidate is the
-  decoder whose result is emitted, or, if no result is emitted, the first
-  candidate tried (best score; ties broken by extension hint, then name).
-- `confidence` is that candidate's probe score, else 0.0.
+- `format` is the chosen candidate's decoder name if any decoder's probe
+  reached the threshold (0.5), else `"unknown"`. The chosen candidate is
+  the decoder whose result is emitted, or, if no result is emitted, the
+  first candidate tried (best score; ties broken by extension hint, then
+  name).
+- `variant` is the decoder's `DecodeResult.format` when it is a non-empty
+  string that differs from the decoder name (decoders use it for
+  sub-versions, e.g. `"WPD 5.1"` from the `WPD` decoder), else `null`.
+  Always `null` for `unknown` and `failed` files.
+- `confidence`:
+  - `decoded` / `partial`: the decoder's post-decode
+    `DecodeResult.confidence`, clamped to [0, 1];
+  - `unknown` / `failed`: the chosen candidate's probe score, else 0.0.
+- The report entry also has `probe_score`: the chosen candidate's probe
+  score, or 0.0 when there is none.
 
 So a LIBRA-98 file whose decoder crashes is `"format": "LIBRA-98"`,
-`"status": "failed"`.
+`"status": "failed"`, `"confidence"` = its probe score.
 
 ### `status` = decoding outcome (exactly one per file)
 
@@ -105,7 +120,8 @@ everything before identification finished (start-up, reading, probing).
               "by_format": {"STUB": 4, "T-BIG": 1, "unknown": 6}},
   "files": [
     {"input": "sub/x.dat", "output": "sub/x.dat.json", "size": 1234,
-     "sha256": "<hex>", "status": "decoded", "format": "STUB", "confidence": 1.0,
+     "sha256": "<hex>", "status": "decoded", "format": "STUB", "variant": null,
+     "confidence": 1.0, "probe_score": 1.0,
      "candidates": [{"format": "STUB", "score": 1.0},
                     {"format": "OTHER", "score": 0.0, "error": "probe raised ..."}],
      "attempts": [{"format": "STUB", "outcome": "ok"}],
@@ -113,6 +129,9 @@ everything before identification finished (start-up, reading, probing).
      "fields_by_status":  {"verified": 1, "consistent": 1, "unverified": 3, "lost": 0},
      "members": 0,
      "damage": [{"start": 23, "end": 23, "kind": "truncated", "reason": "..."}],
+     "coverage": {"bytes_total": 1234, "bytes_explained": 1200, "bytes_padding": 30,
+                  "explained_pct": 97.24, "accounted_pct": 99.68,
+                  "unexplained": [[1230, 1234]], "unexplained_truncated": false},
      "warnings": [], "errors": []}
   ],
   "skipped": [{"input": "link", "reason": "symlink (not followed)"}],
@@ -130,4 +149,61 @@ everything before identification finished (start-up, reading, probing).
 - `skipped`: symlinks, FIFOs, devices, sockets, unreadable folders. They
   are never opened.
 - `errors` (run level): missing/unreadable input directory, decoder import
-  errors, a failed report write, internal errors.
+  errors, a failed report write, an unusable official schema, a report that
+  fails schema validation, internal errors.
+- `schema_version` names the active report schema: `"provisional-1"`, or
+  `"official"` once the organizers' schema is in use. Each per-file
+  output's `schema_version` names the active output schema the same way.
+
+### `coverage` (report entry)
+
+How much of the file the decoder's reads explained, from the SafeReader of
+the attempt whose result was emitted:
+
+| key | meaning |
+|-----|---------|
+| `bytes_total` | file size |
+| `bytes_explained` | bytes claimed by any read whose label is not `"padding"` |
+| `bytes_padding` | bytes claimed ONLY by `"padding"` reads |
+| `explained_pct` | 100 × explained / total, 2 decimals; `null` for an empty file |
+| `accounted_pct` | 100 × (explained + padding) / total, 2 decimals; `null` for an empty file |
+| `unexplained` | merged `[start, end)` ranges never claimed, at most 100 |
+| `unexplained_truncated` | `true` if there were more than 100 such ranges |
+
+`decoded`/`partial` files: the decoder's coverage. `unknown` files: nothing
+is explained (`bytes_explained` 0, the whole file unexplained). `failed`
+files: `"coverage": null`. Probing with `salvage.core.resync.ByteView`
+claims nothing, so it never counts.
+
+## Limits
+
+After decode, core keeps at most `MAX_RECORDS` (1,000,000) records per file
+and `MAX_MEMBERS` (100,000) archive members per file, both counted over all
+nested members, depth first (`salvage/core/limits.py`). Anything past a
+limit is dropped, the warning `"output capped at N records"` (or `"...
+members"`) is added and the file's status becomes `partial`. Decoders
+enforce `MAX_DECOMPRESSED` themselves.
+
+## Schema validation
+
+Before anything is written, the parent process validates it
+(`salvage/core/validate.py`, using the stdlib-only validator
+`salvage/core/jsonschema_lite.py`):
+
+- **Schema choice.** For each document kind the organizers' schema in
+  `salvage/core/schemas/official/` (`output.schema.json`,
+  `report.schema.json`; names in `validate.SCHEMA_FILES`) is used if
+  present, else the provisional one. An official schema that cannot be
+  used (unreadable, or a keyword the validator does not support) is
+  reported as a run-level error and the provisional schema is used.
+  `python -m salvage.core.validate` shows what is active.
+- **Per-file output invalid** → it is NOT written. A minimal `failed`
+  output is written instead: same `format`/`variant`/`confidence`, no
+  records, members, damage or meta; `errors` = one header line plus the
+  first 10 validation errors (`"<json path>: <message>"`). The report
+  entry is changed to match (status `failed`, zero counts, `coverage`
+  null). If even the replacement fails validation, it is written anyway
+  and a run-level error says so (a bug).
+- **report.json invalid** → it is still written (the report must always
+  exist), with a run-level error naming the first problems; the same
+  message goes to stderr.
