@@ -9,7 +9,8 @@ from __future__ import annotations
 from typing import Any, Iterable, Iterator
 
 from salvage import __version__
-from salvage.core.emit import SCHEMA_VERSION, display_path
+from salvage.core import validate
+from salvage.core.emit import display_path
 from salvage.core.model import DecodeResult, Status
 
 TRUST = ("verified", "consistent", "unverified", "lost")
@@ -37,11 +38,14 @@ def file_status(result: DecodeResult) -> str:
 def make_entry(*, rel: str, size: int, status: str, fmt: str, confidence: float,
                candidates: Iterable[Any] = (), attempts: Iterable[tuple[str, str]] = (),
                result: DecodeResult | None = None, warnings: Iterable[str] = (),
-               errors: Iterable[str] = ()) -> dict[str, Any]:
+               errors: Iterable[str] = (), variant: str | None = None,
+               probe_score: float = 0.0,
+               coverage: dict[str, Any] | None = None) -> dict[str, Any]:
     """One report entry. ``output`` and ``sha256`` are filled in by the pipeline.
 
     ``candidates`` are :class:`~salvage.core.identify.Ranked`; ``attempts``
     are ``(format, outcome)`` pairs. Counts include members, recursively.
+    ``coverage`` is :func:`salvage.core.coverage.coverage` (None for failed files).
     """
     records = dict.fromkeys(TRUST, 0)
     fields = dict.fromkeys(TRUST, 0)
@@ -66,11 +70,11 @@ def make_entry(*, rel: str, size: int, status: str, fmt: str, confidence: float,
         cands.append(c)
     return {
         "input": display_path(rel), "output": None, "size": size, "sha256": None,
-        "status": status, "format": fmt, "confidence": confidence,
-        "candidates": cands,
+        "status": status, "format": fmt, "variant": variant, "confidence": confidence,
+        "probe_score": probe_score, "candidates": cands,
         "attempts": [{"format": f, "outcome": o} for f, o in attempts],
         "records_by_status": records, "fields_by_status": fields,
-        "members": members, "damage": damage,
+        "members": members, "damage": damage, "coverage": coverage,
         "warnings": list(warnings), "errors": list(errors),
     }
 
@@ -78,7 +82,7 @@ def make_entry(*, rel: str, size: int, status: str, fmt: str, confidence: float,
 def new_report() -> dict[str, Any]:
     """An empty report; :func:`summarize` fills in the summary."""
     rep: dict[str, Any] = {
-        "tool": "salvage", "version": __version__, "schema_version": SCHEMA_VERSION,
+        "tool": "salvage", "version": __version__, "schema_version": validate.version("report"),
         "summary": {}, "files": [], "skipped": [], "errors": [],
     }
     summarize(rep)

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "salvage:report.provisional.json",
+  "title": "Salvage report.json (provisional-1)",
+  "description": "Describes exactly the shape in docs/output-format.md. Replaced by the organizers' schema when it arrives.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tool", "version", "schema_version", "summary", "files", "skipped", "errors"],
+  "properties": {
+    "tool": {"const": "salvage"},
+    "version": {"type": "string", "minLength": 1},
+    "schema_version": {"const": "provisional-1"},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "decoded", "partial", "unknown", "failed", "skipped", "by_format"],
+      "properties": {
+        "files": {"$ref": "#/$defs/count"},
+        "decoded": {"$ref": "#/$defs/count"},
+        "partial": {"$ref": "#/$defs/count"},
+        "unknown": {"$ref": "#/$defs/count"},
+        "failed": {"$ref": "#/$defs/count"},
+        "skipped": {"$ref": "#/$defs/count"},
+        "by_format": {"type": "object", "additionalProperties": {"$ref": "#/$defs/count"}}
+      }
+    },
+    "files": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["input", "reason"],
+        "properties": {
+          "input": {"type": "string", "minLength": 1},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    "errors": {"$ref": "#/$defs/strings"}
+  },
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0},
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "strings": {"type": "array", "items": {"type": "string"}},
+    "by_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified", "consistent", "unverified", "lost"],
+      "properties": {
+        "verified": {"$ref": "#/$defs/count"},
+        "consistent": {"$ref": "#/$defs/count"},
+        "unverified": {"$ref": "#/$defs/count"},
+        "lost": {"$ref": "#/$defs/count"}
+      }
+    },
+    "damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "kind", "reason"],
+      "properties": {
+        "start": {"$ref": "#/$defs/count"},
+        "end": {"$ref": "#/$defs/count"},
+        "kind": {"enum": ["truncated", "checksum", "bounds", "unparsed", "other"]},
+        "reason": {"type": "string"}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bytes_total", "bytes_explained", "bytes_padding", "explained_pct",
+                   "accounted_pct", "unexplained", "unexplained_truncated"],
+      "properties": {
+        "bytes_total": {"$ref": "#/$defs/count"},
+        "bytes_explained": {"$ref": "#/$defs/count"},
+        "bytes_padding": {"$ref": "#/$defs/count"},
+        "explained_pct": {"$ref": "#/$defs/percent"},
+        "accounted_pct": {"$ref": "#/$defs/percent"},
+        "unexplained": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "array",
+            "prefixItems": [{"$ref": "#/$defs/count"}, {"$ref": "#/$defs/count"}],
+            "items": false,
+            "minItems": 2
+          }
+        },
+        "unexplained_truncated": {"type": "boolean"}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "output", "size", "sha256", "status", "format", "variant",
+                   "confidence", "probe_score", "candidates", "attempts",
+                   "records_by_status", "fields_by_status", "members", "damage",
+                   "coverage", "warnings", "errors"],
+      "properties": {
+        "input": {"type": "string", "minLength": 1},
+        "output": {"type": ["string", "null"], "minLength": 1},
+        "size": {"$ref": "#/$defs/count"},
+        "sha256": {"anyOf": [{"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                             {"type": "null"}]},
+        "status": {"enum": ["decoded", "partial", "unknown", "failed"]},
+        "format": {"type": "string", "minLength": 1},
+        "variant": {"type": ["string", "null"], "minLength": 1},
+        "confidence": {"$ref": "#/$defs/unit"},
+        "probe_score": {"$ref": "#/$defs/unit"},
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["format", "score"],
+            "properties": {
+              "format": {"type": "string"},
+              "score": {"$ref": "#/$defs/unit"},
+              "error": {"type": "string"}
+            }
+          }
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["format", "outcome"],
+            "properties": {
+              "format": {"type": "string"},
+              "outcome": {"type": "string", "pattern": "^(ok|empty|(invalid|error): [\\s\\S]*)$"}
+            }
+          }
+        },
+        "records_by_status": {"$ref": "#/$defs/by_status"},
+        "fields_by_status": {"$ref": "#/$defs/by_status"},
+        "members": {"$ref": "#/$defs/count"},
+        "damage": {"type": "array", "items": {"$ref": "#/$defs/damage"}},
+        "coverage": {"anyOf": [{"$ref": "#/$defs/coverage"}, {"type": "null"}]},
+        "warnings": {"$ref": "#/$defs/strings"},
+        "errors": {"$ref": "#/$defs/strings"}
+      }
+    }
+  }
+}

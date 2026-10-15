@@ -11,9 +11,10 @@ import multiprocessing
 import os
 import stat
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
-from salvage.core import emit, fallback, identify, report
+from salvage.core import caps, emit, fallback, identify, report
+from salvage.core.coverage import coverage
 from salvage.core.limits import MAX_FILE_BYTES
 from salvage.core.model import DecodeResult
 from salvage.core.plugin import Decoder, discover_decoders
@@ -61,12 +62,21 @@ def try_candidates(candidates: list[Decoder], data: bytes
     "error: <Type>: <msg>" (both never emitted). Returns
     ``(result, decoder, attempts)``; result is None if nothing was usable.
     """
+    result, dec, attempts, _ = _try_candidates(candidates, data)
+    return result, dec, attempts
+
+
+def _try_candidates(candidates: list[Decoder], data: bytes
+                    ) -> tuple[DecodeResult | None, Decoder | None, list[tuple[str, str]],
+                               SafeReader | None]:
+    """:func:`try_candidates` plus the SafeReader of the attempt that was kept."""
     attempts: list[tuple[str, str]] = []
-    empty: tuple[DecodeResult, Decoder] | None = None
+    empty: tuple[DecodeResult, Decoder, SafeReader] | None = None
     for dec in candidates:
         name = str(getattr(dec, "name", ""))
+        reader = SafeReader(data)
         try:
-            result = dec.decode(SafeReader(data))
+            result = dec.decode(reader)
         except (Exception, SystemExit) as exc:
             attempts.append((name, f"error: {_exc_text(exc)}"))
             continue
@@ -81,13 +91,13 @@ def try_candidates(candidates: list[Decoder], data: bytes
         if not result.records and not result.members:
             attempts.append((name, "empty"))
             if empty is None:
-                empty = (result, dec)
+                empty = (result, dec, reader)
             continue
         attempts.append((name, "ok"))
-        return result, dec, attempts
+        return result, dec, attempts, reader
     if empty is not None:
-        return empty[0], empty[1], attempts
-    return None, None, attempts
+        return empty[0], empty[1], attempts, empty[2]
+    return None, None, attempts, None
 
 
 def identified_info(choice: identify.Choice) -> dict[str, Any]:
@@ -105,7 +115,7 @@ def identified_info(choice: identify.Choice) -> dict[str, Any]:
 
 
 def identity(info: dict[str, Any] | None, used: str | None = None) -> tuple[str, float]:
-    """``(format, confidence)`` for an output: the chosen candidate and its probe score.
+    """``(format, probe score)`` of the chosen candidate.
 
     The chosen candidate is ``used`` (the decoder whose result is emitted)
     or else the first candidate in try order. No candidate (or no
@@ -120,6 +130,25 @@ def identity(info: dict[str, Any] | None, used: str | None = None) -> tuple[str,
     return name, 0.0
 
 
+def decoded_identity(name: str, result: DecodeResult) -> tuple[str | None, float]:
+    """``(variant, confidence)`` for a decoded/partial file.
+
+    ``variant`` is ``result.format`` when it is a non-empty string that
+    differs from the decoder name ``name``, else None. ``confidence`` is
+    ``result.confidence`` clamped to [0, 1] (0.0 if not a finite number).
+    """
+    fmt = result.format
+    variant = fmt if isinstance(fmt, str) and fmt and fmt != name else None
+    conf = result.confidence
+    try:
+        value = 0.0 if isinstance(conf, bool) else float(conf)
+    except (TypeError, ValueError):
+        value = 0.0
+    if value != value:  # NaN
+        value = 0.0
+    return variant, min(1.0, max(0.0, value))
+
+
 def process_file(path: str, rel: str, package: str = "salvage.formats",
                  on_identified: Callable[[dict[str, Any]], None] | None = None
                  ) -> dict[str, Any]:
@@ -132,8 +161,6 @@ def process_file(path: str, rel: str, package: str = "salvage.formats",
     probing, before any decode starts. Never raises (everything is
     reported as data).
     """
-    run_errors: list[str] = []
-    info: dict[str, Any] | None = None
     try:
         try:
             data = read_regular(path)
@@ -142,10 +169,27 @@ def process_file(path: str, rel: str, package: str = "salvage.formats",
             return failed_payload(rel, None, f"cannot read file: {why}")
         if len(data) > MAX_FILE_BYTES:
             return failed_payload(rel, None, f"too large (> {MAX_FILE_BYTES} bytes)")
-
         found = discover_decoders(package)
-        run_errors = list(found.errors)
-        choice = identify.choose(found.decoders, data, rel.rsplit("/", 1)[-1])
+    except BaseException as exc:  # noqa: BLE001 - the child reports everything as data
+        return failed_payload(rel, None, f"internal error: {_exc_text(exc)}")
+    return process_data(rel, data, found.decoders, found.errors, on_identified)
+
+
+def process_data(rel: str, data: bytes, decoders: list[Decoder],
+                 run_errors: Iterable[str] = (),
+                 on_identified: Callable[[dict[str, Any]], None] | None = None
+                 ) -> dict[str, Any]:
+    """Identify and decode ``data`` with ``decoders``; return the payload.
+
+    The worker-side core of :func:`process_file`, also usable in-process
+    (tests, the decoder template): probing, candidate attempts, the
+    record/member caps, coverage, and the output and entry dicts. Never
+    raises.
+    """
+    errors_run = list(run_errors)
+    info: dict[str, Any] | None = None
+    try:
+        choice = identify.choose(decoders, data, rel.rsplit("/", 1)[-1])
         info = identified_info(choice)
         if on_identified is not None:
             try:
@@ -155,17 +199,20 @@ def process_file(path: str, rel: str, package: str = "salvage.formats",
 
         if not choice.candidates:
             result = fallback.unknown(data, choice.ranked)
-            return _payload(rel, data, "unknown", result, info, [], [], run_errors)
+            return _payload(rel, data, "unknown", result, info, [], [], errors_run,
+                            cov=coverage(SafeReader(data)))
 
-        result, dec, attempts = try_candidates(choice.candidates, data)
-        if result is None:
+        result, dec, attempts, reader = _try_candidates(choice.candidates, data)
+        if result is None or reader is None:
             return _payload(rel, data, "failed", None, info, attempts,
-                            ["no candidate decoder produced a valid result"], run_errors)
-        return _payload(rel, data, report.file_status(result), result, info, attempts,
-                        [], run_errors, used=str(getattr(dec, "name", "")))
+                            ["no candidate decoder produced a valid result"], errors_run)
+        capped = caps.enforce(result)
+        status = "partial" if capped else report.file_status(result)
+        return _payload(rel, data, status, result, info, attempts, [], errors_run,
+                        used=str(getattr(dec, "name", "")), cov=coverage(reader))
     except BaseException as exc:  # noqa: BLE001 - the child reports everything as data
         payload = failed_payload(rel, None, f"internal error: {_exc_text(exc)}", info)
-        payload["run_errors"] = run_errors
+        payload["run_errors"] = errors_run
         return payload
 
 
@@ -176,15 +223,20 @@ def _ranked(info: dict[str, Any] | None) -> list[identify.Ranked]:
 
 def _payload(rel: str, data: bytes, status: str, result: DecodeResult | None,
              info: dict[str, Any], attempts: list[tuple[str, str]], errors: list[str],
-             run_errors: list[str], used: str | None = None) -> dict[str, Any]:
-    fmt, confidence = identity(info, used)
+             run_errors: list[str], used: str | None = None,
+             cov: dict[str, Any] | None = None) -> dict[str, Any]:
+    fmt, probe_score = identity(info, used)
+    variant, confidence = None, probe_score
+    if result is not None and used is not None and status in ("decoded", "partial"):
+        variant, confidence = decoded_identity(fmt, result)
     res_dict = result.to_dict() if result is not None else None
     output = emit.to_output(rel=rel, size=len(data), sha256=None, fmt=fmt,
-                            confidence=confidence, status=status, result=res_dict,
-                            warnings=info["warnings"], errors=errors)
+                            variant=variant, confidence=confidence, status=status,
+                            result=res_dict, warnings=info["warnings"], errors=errors)
     entry = report.make_entry(rel=rel, size=len(data), status=status, fmt=fmt,
-                              confidence=confidence, candidates=_ranked(info),
-                              attempts=attempts, result=result,
+                              variant=variant, confidence=confidence,
+                              probe_score=probe_score, candidates=_ranked(info),
+                              attempts=attempts, result=result, coverage=cov,
                               warnings=output["warnings"], errors=errors)
     return {"output": output, "entry": entry, "run_errors": run_errors}
 
@@ -194,17 +246,18 @@ def failed_payload(rel: str, size: int | None, reason: str,
     """Payload for a file that could not be decoded at all.
 
     ``info`` is the :func:`identified_info` if identification finished: the
-    file then keeps its format, confidence, candidates and warnings.
+    file then keeps its format, confidence (= probe score), candidates and
+    warnings. No records and ``coverage`` None.
     """
     size = size if size is not None else 0
-    fmt, confidence = identity(info)
+    fmt, score = identity(info)
     warnings = list((info or {}).get("warnings") or [])
     output = emit.to_output(rel=rel, size=size, sha256=None, fmt=fmt,
-                            confidence=confidence, status="failed",
+                            confidence=score, status="failed",
                             warnings=warnings, errors=[reason])
     entry = report.make_entry(rel=rel, size=size, status="failed", fmt=fmt,
-                              confidence=confidence, candidates=_ranked(info),
-                              warnings=warnings, errors=[reason])
+                              confidence=score, probe_score=score,
+                              candidates=_ranked(info), warnings=warnings, errors=[reason])
     return {"output": output, "entry": entry, "run_errors": []}
 
 

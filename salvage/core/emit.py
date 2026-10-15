@@ -1,7 +1,7 @@
 """Output JSON: the ONLY module that knows the per-file output shape.
 
 The shape is PROVISIONAL ("provisional-1") until the real schema arrives;
-see docs/output-format.md.
+see docs/output-format.md and salvage/core/schemas/output.provisional.json.
 """
 
 from __future__ import annotations
@@ -10,24 +10,29 @@ import json
 import os
 from typing import Any, Iterable
 
-SCHEMA_VERSION = "provisional-1"
+from salvage.core import validate
+
+SCHEMA_VERSION = validate.PROVISIONAL_VERSION
 REPORT_NAME = "report.json"
 
 
 def to_output(*, rel: str, size: int, sha256: str | None, fmt: str,
               confidence: float, status: str, result: dict[str, Any] | None = None,
-              warnings: Iterable[str] = (), errors: Iterable[str] = ()) -> dict[str, Any]:
+              warnings: Iterable[str] = (), errors: Iterable[str] = (),
+              variant: str | None = None) -> dict[str, Any]:
     """Build one per-file output document.
 
     ``result`` is ``DecodeResult.to_dict()`` (or None for a failed file);
     records/members/damage/meta/warnings are taken from it. ``warnings`` are
-    pipeline warnings appended after the decoder's own.
+    pipeline warnings appended after the decoder's own. ``schema_version``
+    names the active output schema (see :mod:`salvage.core.validate`).
     """
     res = result or {}
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": validate.version("output"),
         "source": {"path": display_path(rel), "size": size, "sha256": sha256},
         "format": fmt,
+        "variant": variant,
         "confidence": confidence,
         "status": status,
         "records": list(res.get("records") or []),
