@@ -1,0 +1,28 @@
+{
+  "confidence": 0.0,
+  "damage": [],
+  "errors": [],
+  "format": "unknown",
+  "members": [],
+  "meta": {
+    "entropy": 3.4264,
+    "entropy_sampled": false,
+    "sha256": "ae6f4be45294915f52499a33a04516828b4845f2d70690356c68aea2f322eaa5",
+    "size": 19,
+    "top_candidates": [
+      {
+        "format": "STUB",
+        "score": 0.0
+      }
+    ]
+  },
+  "records": [],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "wrong_magic.bin",
+    "sha256": "ae6f4be45294915f52499a33a04516828b4845f2d70690356c68aea2f322eaa5",
+    "size": 19
+  },
+  "status": "unknown",
+  "warnings": []
+}

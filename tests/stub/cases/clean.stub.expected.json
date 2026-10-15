@@ -1,0 +1,104 @@
+{
+  "confidence": 1.0,
+  "damage": [],
+  "errors": [],
+  "format": "STUB",
+  "members": [],
+  "meta": {
+    "declared_count": 4,
+    "decoded_count": 4
+  },
+  "records": [
+    {
+      "fields": [
+        {
+          "evidence": "exact magic match",
+          "length": 13,
+          "name": "magic",
+          "offset": 0,
+          "status": "verified",
+          "value": "53414c564147452d5354554200"
+        },
+        {
+          "evidence": "4 values x 4 bytes = 16 bytes fit in 16 remaining",
+          "length": 2,
+          "name": "count",
+          "offset": 13,
+          "status": "consistent",
+          "value": 4
+        }
+      ],
+      "kind": "header",
+      "offset": 0,
+      "status": "consistent"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "no checksum in format",
+          "length": 4,
+          "name": "value",
+          "offset": 15,
+          "status": "unverified",
+          "value": 1
+        }
+      ],
+      "kind": "value",
+      "offset": 15,
+      "status": "unverified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "no checksum in format",
+          "length": 4,
+          "name": "value",
+          "offset": 19,
+          "status": "unverified",
+          "value": 2
+        }
+      ],
+      "kind": "value",
+      "offset": 19,
+      "status": "unverified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "no checksum in format",
+          "length": 4,
+          "name": "value",
+          "offset": 23,
+          "status": "unverified",
+          "value": 3
+        }
+      ],
+      "kind": "value",
+      "offset": 23,
+      "status": "unverified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "no checksum in format",
+          "length": 4,
+          "name": "value",
+          "offset": 27,
+          "status": "unverified",
+          "value": 3735928559
+        }
+      ],
+      "kind": "value",
+      "offset": 27,
+      "status": "unverified"
+    }
+  ],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "clean.stub",
+    "sha256": "dcc022b4ad7c7d57e29e5fdbccf6caa77eb89945ef9eff0f65a0acaf6b83bb56",
+    "size": 31
+  },
+  "status": "decoded",
+  "warnings": []
+}
