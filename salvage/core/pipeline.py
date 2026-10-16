@@ -76,8 +76,10 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
         rep["skipped"] = [{"input": emit.display_path(s.rel), "reason": s.reason}
                           for s in skipped]
         root = os.path.abspath(input_dir)
-        protected = {_key(i.path) for i in inputs}
-        protected |= {_key(os.path.join(root, *s.rel.split("/"))) for s in skipped}
+        if folders_overlap(input_dir, output_dir):
+            # Only then can an output land on an input: guard every target.
+            protected = {_key(i.path) for i in inputs}
+            protected |= {_key(os.path.join(root, *s.rel.split("/"))) for s in skipped}
         names = emit.output_names(i.rel for i in inputs)
         run_errors: list[str] = list(validate.load_problems())
         entries: list[dict[str, Any] | None] = [None] * len(inputs)
@@ -99,7 +101,7 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
             entry["output"] = emit.display_path(out_rel)
             target = os.path.join(output_dir, *out_rel.split("/"))
             try:
-                if _key(target) in protected:
+                if protected and _key(target) in protected:
                     raise OSError(0, "refusing to overwrite an input file")
                 if os.path.isdir(target):
                     raise OSError(0, "output path is an existing folder")
@@ -166,7 +168,7 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
         if out_ok:
             target = os.path.join(output_dir, emit.REPORT_NAME)
             try:
-                if _key(target) in protected:
+                if protected and _key(target) in protected:
                     raise OSError(0, "refusing to overwrite an input file")
                 emit.write_json(target, rep)
             except (OSError, ValueError, TypeError) as exc:
@@ -185,16 +187,17 @@ def _start(item: walk.InputFile, package: str, timeout: float
     """Start one file: ``(worker, sha256, None)``, or ``(None, None, result)``
     when no worker is needed.
 
-    A file over MAX_FILE_BYTES is failed without being read (no sha256); a
-    file deleted since the walk is failed as "file disappeared".
+    A file over MAX_FILE_BYTES is failed without being decoded; it is only
+    hashed (streamed in 1 MiB chunks, never fully in memory). A file deleted
+    since the walk is failed as "file disappeared".
     """
-    if item.size > MAX_FILE_BYTES:
-        return None, None, _unpack(isolate.failed_payload(
-            item.rel, item.size, f"too large ({item.size} bytes > {MAX_FILE_BYTES})"), None)
     sha = sha256_file(item.path)
     if sha is None and not os.path.lexists(item.path):
         return None, None, _unpack(isolate.failed_payload(item.rel, None, isolate.DISAPPEARED),
                                    None)
+    if item.size > MAX_FILE_BYTES:
+        return None, None, _unpack(isolate.failed_payload(
+            item.rel, item.size, f"too large ({item.size} bytes > {MAX_FILE_BYTES})"), sha)
     return isolate.Worker(item.path, item.rel, package, timeout), sha, None
 
 
@@ -329,7 +332,7 @@ def _check_report(rep: dict[str, Any]) -> None:
 
 
 def sha256_file(path: str) -> str | None:
-    """SHA-256 of a regular file, streamed in 1 MB chunks; None if unreadable."""
+    """SHA-256 of a regular file, streamed in 1 MiB chunks; None if unreadable."""
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = os.open(path, flags)
@@ -359,6 +362,19 @@ def _prepare_output(output_dir: str, rep: dict[str, Any]) -> bool:
     except OSError as exc:
         rep["errors"].append(f"cannot create output directory: {_strerror(exc)}")
         return False
+
+
+def folders_overlap(a: str, b: str) -> bool:
+    """True if folders ``a`` and ``b`` are the same or one is inside the other.
+
+    Both are resolved once (``realpath``, so symlinked roots count). Only
+    then can an output of a run from ``a`` to ``b`` land on an input.
+    """
+    ka, kb = _key(a), _key(b)
+    if ka == kb:
+        return True
+    shorter, longer = sorted((ka, kb), key=len)
+    return longer.startswith(shorter.rstrip(os.sep) + os.sep)
 
 
 def _key(path: str) -> str:

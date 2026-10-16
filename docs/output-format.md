@@ -58,8 +58,9 @@ entry gets `"output": null` and an error.
   at N records"` / `"... members"`, see "Limits"), then pipeline warnings
   (e.g. `"ambiguous: A, B"`).
 - `errors` = why a file failed (timeout, crash, read error, ...).
-- `sha256` is `null` only if the file could not be read, disappeared, or
-  is over `MAX_FILE_BYTES` (such a file is never read, not even to hash it).
+- `sha256` is `null` only if the file could not be read or disappeared.
+  A file over `MAX_FILE_BYTES` is still hashed (streamed in 1 MiB chunks,
+  never held in memory) but never decoded.
 
 ### `format`, `variant` and `confidence` = identification
 
@@ -115,7 +116,7 @@ a timeout. Other reasons:
 
 | error | meaning |
 |-------|---------|
-| `too large (N bytes > M)` | over `MAX_FILE_BYTES`; never read |
+| `too large (N bytes > M)` | over `MAX_FILE_BYTES`; hashed but never decoded |
 | `file disappeared` | deleted between the folder walk and the read |
 | `cannot read file: <reason>` | could not be opened or read |
 | `memory limit (2048 MiB)` | a candidate ran out of memory under the worker cap (POSIX; see "Running") and no candidate succeeded; that attempt's outcome is `error: memory limit` |

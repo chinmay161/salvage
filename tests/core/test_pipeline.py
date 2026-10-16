@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import random
@@ -257,21 +258,84 @@ class RunErrorTests(unittest.TestCase):
             self.assertIsNone(entry["output"])
             self.assertTrue(entry["errors"])
 
-    def test_too_large_is_failed_without_reading(self):
+    def test_too_large_is_hashed_but_never_decoded(self):
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:
             inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
             _make_tree(inp, {"big.stub": CLEAN})
             with mock.patch.object(pipeline, "MAX_FILE_BYTES", 10), \
                     mock.patch.object(pipeline.isolate, "Worker") as spawn, \
-                    mock.patch.object(pipeline, "sha256_file") as sha:
+                    mock.patch.object(pipeline, "sha256_file",
+                                      wraps=pipeline.sha256_file) as sha:
                 rep = run_checked(inp, out, decoder_package=PKG, jobs=1)
-            spawn.assert_not_called()
-            sha.assert_not_called()  # never read, not even to hash it
+            spawn.assert_not_called()  # never decoded
+            sha.assert_called_once()   # but hashed (streamed)
             entry = rep["files"][0]
             self.assertEqual(entry["status"], "failed")
             self.assertIn("too large", entry["errors"][0])
-            self.assertIsNone(entry["sha256"])
+            self.assertEqual(entry["sha256"], hashlib.sha256(CLEAN).hexdigest())
+            with open(os.path.join(out, "big.stub.json"), encoding="utf-8") as fh:
+                self.assertEqual(json.load(fh)["source"]["sha256"], entry["sha256"])
+
+    def test_sha256_file_streams_in_1_mib_chunks(self):
+        from unittest import mock
+        data = bytes(range(256)) * (3 * 4096 + 1)   # 3 MiB + 256 bytes
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "f.bin")
+            with open(path, "wb") as fh:
+                fh.write(data)
+            sizes: list[int] = []
+            real_read = os.read
+
+            def spy(fd, n):
+                sizes.append(n)
+                return real_read(fd, n)
+
+            with mock.patch.object(pipeline.os, "read", spy):
+                digest = pipeline.sha256_file(path)
+        self.assertEqual(digest, hashlib.sha256(data).hexdigest())
+        self.assertEqual(set(sizes), {1 << 20})
+        self.assertEqual(len(sizes), 5)   # 4 chunks, then the empty read at EOF
+
+
+class OverwriteGuardTests(unittest.TestCase):
+    def test_folders_overlap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = os.path.join(tmp, "a"), os.path.join(tmp, "ab")
+            inner = os.path.join(a, "x", "y")
+            for d in (b, inner):
+                os.makedirs(d)
+            self.assertTrue(pipeline.folders_overlap(a, a))
+            self.assertTrue(pipeline.folders_overlap(a, os.path.join(a, "x", "..")))
+            self.assertTrue(pipeline.folders_overlap(a, inner))
+            self.assertTrue(pipeline.folders_overlap(inner, a))
+            self.assertFalse(pipeline.folders_overlap(a, b))   # "ab" is not inside "a"
+            self.assertFalse(pipeline.folders_overlap(b, a))
+            self.assertFalse(pipeline.folders_overlap(os.path.join(tmp, "missing"), a))
+
+    def test_input_inside_output_never_overwrites_an_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # Output root <tmp>, input <tmp>/in: input "in/a" has the output
+            # <tmp>/in/a.json, which is the input file "a.json".
+            inp = os.path.join(tmp, "in")
+            _make_tree(inp, {"in/a": CLEAN, "a.json": b"precious"})
+            rep = run_checked(inp, tmp, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
+            with open(os.path.join(inp, "a.json"), "rb") as fh:
+                self.assertEqual(fh.read(), b"precious")
+            entry = next(e for e in rep["files"] if e["input"] == "in/a")
+            self.assertIsNone(entry["output"])
+            self.assertTrue(any("overwrite an input" in e for e in entry["errors"]))
+
+    def test_disjoint_folders_skip_the_per_file_check(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
+            _make_tree(inp, {f"f{i}.stub": CLEAN for i in range(5)})
+            with mock.patch.object(pipeline, "_key", wraps=pipeline._key) as key:
+                rep = run_checked(inp, out, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
+            self.assertEqual(key.call_count, 2)   # the two folders, resolved once
+            self.assertEqual([e["status"] for e in rep["files"]], ["decoded"] * 5)
+            self.assertTrue(all(e["output"] for e in rep["files"]))
 
 
 if __name__ == "__main__":

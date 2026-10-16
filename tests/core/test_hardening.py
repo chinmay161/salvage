@@ -5,6 +5,7 @@ POSIX-only behaviour (memory cap, SIGTERM) is skipped on Windows with a
 reason; ``python tools/task.py docker-test`` runs it on Linux.
 """
 
+import hashlib
 import json
 import os
 import signal
@@ -336,7 +337,7 @@ class FileSystemEdgeTests(unittest.TestCase):
                             decoder_package=HOSTILE, jobs=1)
         self.assertEqual(fresh["warnings"], [])
 
-    def test_too_large_via_salvage_limits_is_never_read(self):
+    def test_too_large_via_salvage_limits_is_hashed_never_decoded(self):
         make_tree(self.inp, {"big.bin": b"\x00" * (2 * 1024 * 1024), "small.stub": CLEAN})
         script = (
             "import json, sys\n"
@@ -357,9 +358,12 @@ class FileSystemEdgeTests(unittest.TestCase):
                               capture_output=True, text=True, timeout=60)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         seen = json.loads(proc.stdout.splitlines()[-1])
-        self.assertEqual([os.path.basename(p) for p in seen], ["small.stub", "small.stub"])
+        # big.bin is hashed (streamed) but never given to a worker.
+        self.assertEqual([os.path.basename(p) for p in seen],
+                         ["big.bin", "small.stub", "small.stub"])
         big, small = load_report(self.out)["files"]
-        self.assertEqual((big["status"], big["sha256"]), ("failed", None))
+        self.assertEqual((big["status"], big["sha256"]),
+                         ("failed", hashlib.sha256(bytes(2 * 1024 * 1024)).hexdigest()))
         self.assertEqual(big["errors"], ["too large (2097152 bytes > 1048576)"])
         self.assertEqual(small["status"], "decoded")
 
