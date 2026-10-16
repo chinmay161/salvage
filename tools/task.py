@@ -123,10 +123,26 @@ def _docker(args: list[str], timeout: float = DOCKER_RUN_TIMEOUT, **kw) -> int:
         return 124
 
 
-def host_path(path: str | Path) -> str:
+def normalize_git_bash_path(path: str | Path, *, _os_name: str | None = None) -> str:
+    """Normalize a Git Bash drive path (/c/x -> C:/x) on Windows before abspath."""
+    p = str(path)
+    current_os = os.name if _os_name is None else _os_name
+    if current_os == "nt":
+        normalized = p.replace("\\", "/")
+        m = re.match(r"^//?([a-zA-Z])(/.*)?$", normalized)
+        if m:
+            drive = m.group(1).upper()
+            rest = m.group(2) or "/"
+            return f"{drive}:{rest}" if rest.startswith("/") else f"{drive}:/{rest}"
+    return p
+
+
+def host_path(path: str | Path, *, _os_name: str | None = None) -> str:
     """Absolute path in a form ``docker -v`` accepts (C:/x/y on Windows)."""
-    full = os.path.abspath(path)
-    return full.replace("\\", "/") if os.name == "nt" else full
+    p = normalize_git_bash_path(path, _os_name=_os_name)
+    current_os = os.name if _os_name is None else _os_name
+    full = os.path.abspath(p)
+    return full.replace("\\", "/") if current_os == "nt" else full
 
 
 def docker_run_args(inp: str | Path, out: str | Path) -> list[str]:

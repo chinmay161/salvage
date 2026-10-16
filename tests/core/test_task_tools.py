@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import os
+import posixpath
 import struct
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("salvage_task", ROOT / "tools" / "task.py")
@@ -91,6 +93,45 @@ class CheckOutputsTests(unittest.TestCase):
             self.assertIn("FAIL  missing output: sub/b.bin.json", text)
             self.assertIn("FAIL  unexpected file: extra.json", text)
             self.assertIn("FAIL  a.stub.json: ", text)
+
+
+class HostPathTests(unittest.TestCase):
+    def test_git_bash_paths_on_windows(self):
+        if os.name == "nt":
+            self.assertEqual(task.host_path("/c/arbitrary/project/dir"), "C:/arbitrary/project/dir")
+            self.assertEqual(task.host_path("/d/arbitrary/data"), "D:/arbitrary/data")
+            self.assertEqual(task.host_path("/c"), "C:/")
+            self.assertEqual(task.host_path("/c/"), "C:/")
+            self.assertEqual(task.host_path("//c/arbitrary/project"), "C:/arbitrary/project")
+            self.assertEqual(task.host_path(Path("/c/arbitrary/project")), "C:/arbitrary/project")
+
+    def test_native_windows_paths(self):
+        if os.name == "nt":
+            self.assertEqual(task.host_path(r"C:\arbitrary\project\dir"), "C:/arbitrary/project/dir")
+            self.assertEqual(task.host_path("C:/arbitrary/project/dir"), "C:/arbitrary/project/dir")
+            self.assertEqual(task.host_path(Path("C:/arbitrary/project/dir")), "C:/arbitrary/project/dir")
+
+    def test_relative_paths(self):
+        rel = "some/relative/test_path"
+        expected = os.path.abspath(rel).replace("\\", "/") if os.name == "nt" else os.path.abspath(rel)
+        self.assertEqual(task.host_path(rel), expected)
+        self.assertEqual(task.host_path(Path(rel)), expected)
+
+    def test_non_windows_behavior(self):
+        self.assertEqual(task.normalize_git_bash_path("/c/arbitrary/dir", _os_name="posix"), "/c/arbitrary/dir")
+        self.assertEqual(task.normalize_git_bash_path("/var/log/salvage", _os_name="posix"), "/var/log/salvage")
+        with patch("os.name", "posix"), patch("os.path.abspath", posixpath.abspath):
+            self.assertEqual(task.host_path("/c/arbitrary/dir", _os_name="posix"), "/c/arbitrary/dir")
+            self.assertEqual(task.host_path("/var/log/salvage", _os_name="posix"), "/var/log/salvage")
+            self.assertEqual(task.host_path("relative/test", _os_name="posix"), posixpath.abspath("relative/test"))
+
+    def test_docker_run_args_uses_host_path(self):
+        if os.name == "nt":
+            args = task.docker_run_args("/c/input_test", "/c/output_test")
+            self.assertIn("-v", args)
+            self.assertIn("C:/input_test:/in:ro", args)
+            self.assertIn("C:/output_test:/out", args)
+            self.assertFalse(any("C:/c/" in arg for arg in args))
 
 
 if __name__ == "__main__":
