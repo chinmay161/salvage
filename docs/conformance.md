@@ -279,7 +279,9 @@ what did not work.
 
 **Typical failure:** `C11 docs: docs/log/libra98.md is missing: keep a research log (docs/decoder-guide.md section 11)`
 
-**Fix:** write both files (decoder guide section 11 shows the log format).
+**Fix:** copy `docs/spec/_TEMPLATE.md` and `docs/log/_TEMPLATE.md` to
+`docs/spec/<module>.md` and `docs/log/<module>.md` and fill them in
+(decoder guide section 11).
 
 ---
 

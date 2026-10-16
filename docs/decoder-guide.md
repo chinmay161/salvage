@@ -18,7 +18,7 @@ Contents:
 8. [variant and confidence](#8-variant-and-confidence)
 9. [Running your decoder alone](#9-running-your-decoder-alone)
 10. [Golden tests](#10-golden-tests)
-11. [FIELD-LOG entries](#11-field-log-entries)
+11. [Format spec and FIELD-LOG entries](#11-format-spec-and-field-log-entries)
 12. [Before opening a pull request](#12-before-opening-a-pull-request)
 
 ## 1. Where your files go
@@ -30,8 +30,8 @@ For a format called `<name>` (lowercase, e.g. `libra98`):
 | the decoder | `salvage/formats/<name>.py` |
 | golden test cases | `tests/<name>/cases/` |
 | other tests | `tests/<name>/test_*.py` (add an empty `tests/<name>/__init__.py`) |
-| what you found out about the format | `docs/spec/<name>.md` |
-| your research log | `docs/log/<name>.md` (section 11) |
+| what you found out about the format | `docs/spec/<name>.md`, copied from [`docs/spec/_TEMPLATE.md`](spec/_TEMPLATE.md) (section 11) |
+| your research log | `docs/log/<name>.md`, copied from [`docs/log/_TEMPLATE.md`](log/_TEMPLATE.md) (section 11) |
 
 Do not edit, without asking the lead: `salvage/core/`, `salvage/cli.py`,
 `salvage/formats/stub.py`, `tests/core/`, `tests/fixtures/`, `tools/`,
@@ -288,23 +288,46 @@ A golden case is an input file plus the exact output expected for it.
 Good cases: one clean file, one truncated file, one with a bad checksum,
 one with junk in the middle (resync), one wrong-format file.
 
-## 11. FIELD-LOG entries
+## 11. Format spec and FIELD-LOG entries
 
-Keep a running log in `docs/log/<name>.md`. Add an entry for every
-hypothesis, **including the ones that failed**: they stop others from
-trying the same thing.
+Both files are merged by `python tools/task.py docs` into `FORMAT-SPEC.md`
+and `FIELD-LOG.md` at the repository root (the hackathon deliverables).
+Never edit those two files by hand; edit yours and run `docs`. Files whose
+names start with `_` are templates and are never merged.
+
+**Spec.** Copy [`docs/spec/_TEMPLATE.md`](spec/_TEMPLATE.md) to
+`docs/spec/<name>.md`. The first line is `# <decoder name>` (exactly your
+decoder's `name`, e.g. `# LIBRA-98`), followed by the eight `##` sections
+in the template's order: Summary, Identification, Layout (the
+`Offset | Size | Type | Endian | Field | Meaning | Evidence` table),
+Records, Checksums, Compression and obfuscation, Damage handling, Open
+questions. Write "None" rather than deleting a section: `docs` warns about
+missing sections and a wrong first heading.
+
+**Log.** Copy [`docs/log/_TEMPLATE.md`](log/_TEMPLATE.md) to
+`docs/log/<name>.md` and add an entry for every hypothesis, **including
+the ones that failed**: they stop others from trying the same thing.
+Times are local time (IST).
 
 ```markdown
-### 2026-10-15 14:30 — Record length is u16 big-endian?
+### 2026-10-16 14:05 — Record length is u16 big-endian?
 
-- **Tried:** read bytes 4-5 of each record as u16be and jumped that far.
-- **Evidence:** in 3 sample files the jump lands exactly on the next
-  record marker 41/41 times; as u16le it never does.
-- **Result:** confirmed. Length is u16be and excludes the 6-byte header.
+**Hypothesis:** bytes 2-3 of each record are its length, u16 big-endian.
+
+**Tried:** read them as u16be in `samples/libra98/a.lb9` and jumped that far.
+
+**Evidence:** the jump lands exactly on the next `A5 5A` marker 41/41
+times; read as u16le it never does.
+
+**Result:** CONFIRMED. The length excludes the 4-byte record header.
 ```
 
-Heading format: `### YYYY-MM-DD HH:MM — <title>`. Then tried / evidence /
-result. A failed hypothesis gets `**Result:** rejected, because ...`.
+- Heading: `### YYYY-MM-DD HH:MM — <title>` (an em dash). A heading whose
+  date or time is not valid makes `docs` fail, naming `file:line`.
+- `**Result:**` is `CONFIRMED`, `REJECTED` or `INCONCLUSIVE`, optionally
+  followed by an explanation; anything else (or no Result line) is a
+  warning. `FIELD-LOG.md` counts them per format.
+- Never rewrite an old entry; add a new one that corrects it.
 
 ## 12. Before opening a pull request
 
