@@ -12,6 +12,11 @@
     python tools/task.py golden-update FORMAT regenerate one format's expectations
     python tools/task.py conform [NAME] [--verbose] [--quick]  decoder conformance suite
     python tools/task.py bench [--docker]     throughput, --jobs 1 vs --jobs auto
+    python tools/task.py docs [--check] [--strict]  FORMAT-SPEC.md, FIELD-LOG.md, README table
+    python tools/task.py check-outputs IN OUT one valid JSON per input + report.json?
+    python tools/task.py lint-docker          Dockerfile: no network in RUN, FROM pinned
+    python tools/task.py save-base|load-base  base image <-> dist/base-image.tar
+    python tools/task.py precheck             release checklist on a clean clone of HEAD
 
 Uses ``sys.executable``, so it works whatever the interpreter is called.
 This is a dev tool: unknown commands print usage and exit with code 2;
@@ -22,6 +27,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import shutil
 import struct
 import subprocess
@@ -56,6 +62,21 @@ commands:
                         --quick: the merge gate's smaller run (no samples/)
   bench [--docker]      time the CLI on 525 generated files with --jobs 1
                         and --jobs auto (--docker: inside the image)
+  docs [--check] [--strict]
+                        generate FORMAT-SPEC.md, FIELD-LOG.md and the README
+                        formats table (tools/build_docs.py); --check writes
+                        nothing and exits 1 if a file is stale; --strict
+                        also fails on warnings
+  check-outputs IN OUT  check a finished run: report.json present, one JSON
+                        per input file, every file valid against the active
+                        schema
+  lint-docker           static Dockerfile check: no RUN step uses apt, pip,
+                        curl, wget, git, npm or a URL; FROM pinned by digest
+  save-base             docker save the pinned base image to dist/base-image.tar
+  load-base             docker load dist/base-image.tar
+  precheck              release checklist on a clean clone of HEAD: test,
+                        conform, docs --check, lint-docker, offline build,
+                        docker run on samples/ + golden inputs, docker-smoke
 """
 
 
@@ -300,6 +321,309 @@ def cmd_bench(use_docker: bool) -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# -- check-outputs -----------------------------------------------------------
+
+def cmd_check_outputs(inp: str, out: str) -> int:
+    """Check a finished run's output folder; print one line per problem."""
+    sys.path.insert(0, str(ROOT))
+    import json
+
+    from salvage.core import emit, validate, walk
+
+    inputs, _ = walk.list_inputs(inp, out)
+    rels = [i.rel for i in inputs]
+    expected = set(emit.output_names(rels).values()) | {emit.REPORT_NAME}
+    found = set(_read_tree(out)) if os.path.isdir(out) else set()
+    problems: list[str] = []
+    if emit.REPORT_NAME not in found:
+        problems.append("report.json is missing")
+    problems += [f"missing output: {rel}" for rel in sorted(expected - found)
+                 if rel != emit.REPORT_NAME]
+    problems += [f"unexpected file: {rel}" for rel in sorted(found - expected)]
+    for rel in sorted(expected & found):
+        kind = "report" if rel == emit.REPORT_NAME else "output"
+        try:
+            with open(os.path.join(out, *rel.split("/")), encoding="utf-8") as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError) as exc:
+            problems.append(f"{rel}: cannot read JSON: {exc}")
+            continue
+        problems += [f"{rel}: {e}" for e in validate.errors(kind, doc)[:3]]
+    for p in problems:
+        print(f"FAIL  {p}")
+    print(f"check-outputs: {len(rels)} inputs, {len(found)} files in output, "
+          f"{len(problems)} problems")
+    return 1 if problems else 0
+
+
+# -- Dockerfile lint, base image ---------------------------------------------
+
+NETWORK_TOOLS = ("apt", "apt-get", "aptitude", "pip", "pip3", "curl", "wget", "git", "npm")
+_TOOL_RE = r"(?<![\w.-])(" + "|".join(re.escape(t) for t in NETWORK_TOOLS) + r")(?![\w-])"
+_URL_RE = r"\b[a-z][a-z0-9+.-]*://"
+BASE_TAR = ROOT / "dist" / "base-image.tar"
+
+
+def dockerfile_steps(text: str) -> list[tuple[int, str, str]]:
+    """``(first line number, INSTRUCTION, arguments)`` with continuations joined."""
+    steps: list[tuple[int, str, str]] = []
+    buf: list[str] = []
+    start = 0
+    for n, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if not buf and (not stripped or stripped.startswith("#")):
+            continue
+        if buf and stripped.startswith("#"):
+            continue  # docker drops comment lines inside a continuation
+        if not buf:
+            start = n
+        cont = stripped.endswith("\\")
+        buf.append(stripped[:-1].rstrip() if cont else stripped)
+        if not cont:
+            word, _, rest = " ".join(buf).partition(" ")
+            steps.append((start, word.upper(), rest.strip()))
+            buf = []
+    if buf:
+        word, _, rest = " ".join(buf).partition(" ")
+        steps.append((start, word.upper(), rest.strip()))
+    return steps
+
+
+def lint_dockerfile(text: str) -> list[str]:
+    """Problems in a Dockerfile's text, each starting with "line N:"."""
+    problems = []
+    steps = dockerfile_steps(text)
+    if not any(word == "FROM" for _, word, _ in steps):
+        problems.append("line 1: no FROM instruction")
+    for n, word, args in steps:
+        if word == "FROM":
+            image = next((a for a in args.split() if not a.startswith("--")), "")
+            if not re.search(r"@sha256:[0-9a-f]{64}$", image):
+                problems.append(f"line {n}: FROM {image} is not pinned by digest "
+                                "(use image:tag@sha256:<digest>)")
+        if word == "RUN":
+            tool = re.search(_TOOL_RE, args)
+            if tool:
+                problems.append(f"line {n}: RUN uses '{tool.group(1)}' (network access "
+                                f"at build time): RUN {args}")
+        if word in ("RUN", "ADD") and re.search(_URL_RE, args, re.I):
+            problems.append(f"line {n}: {word} contains a URL: {word} {args}")
+    return problems
+
+
+def base_image() -> str | None:
+    """The image reference of the Dockerfile's first FROM."""
+    steps = dockerfile_steps((ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    for _, word, args in steps:
+        if word == "FROM":
+            return next((a for a in args.split() if not a.startswith("--")), None)
+    return None
+
+
+def cmd_lint_docker() -> int:
+    problems = lint_dockerfile((ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    for p in problems:
+        print(f"Dockerfile {p}")
+    print(f"lint-docker: {'FAIL' if problems else 'PASS'} ({len(problems)} problems)")
+    return 1 if problems else 0
+
+
+def _image_ids(ref: str) -> tuple[str, list[str]] | None:
+    """``(image id, repo digests)`` of a local image, or None if absent."""
+    proc = subprocess.run(["docker", "image", "inspect", ref, "--format",
+                           "{{.Id}} {{join .RepoDigests \" \"}}"],
+                          capture_output=True, text=True, timeout=DOCKER_PROBE_TIMEOUT)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    image_id, *digests = proc.stdout.split()
+    return image_id, digests
+
+
+def _base_present(ref: str) -> bool:
+    """True if the pinned image ``name:tag@sha256:...`` is available locally.
+
+    An image loaded from a tar saved by digest has no tag; with Docker's
+    containerd image store its ID is the pinned digest, and builds find it.
+    """
+    if _image_ids(ref) is not None:
+        return True
+    digest = ref.rpartition("@")[2]
+    found = _image_ids(digest) if digest.startswith("sha256:") else None
+    return found is not None and found[0] == digest
+
+
+def cmd_save_base() -> int:
+    if not _docker_ready():
+        return 1
+    ref = base_image()
+    if not ref or not _base_present(ref):
+        print(f"error: base image {ref} is not present; pull it first "
+              f"(docker pull {ref})", file=sys.stderr)
+        return 1
+    # Save by tag when the tag is the pinned image, so `docker load` restores
+    # the tag too; else by digest.
+    name, _, digest = ref.partition("@")
+    found = _image_ids(name)
+    repo = name.rsplit(":", 1)[0] if ":" in name.rsplit("/", 1)[-1] else name
+    source = name if found and (found[0] == digest or f"{repo}@{digest}" in found[1]) else ref
+    BASE_TAR.parent.mkdir(exist_ok=True)
+    code = _docker(["save", "-o", str(BASE_TAR), source])
+    if code == 0:
+        print(f"saved {source} ({digest}) to {BASE_TAR.relative_to(ROOT).as_posix()} "
+              f"({BASE_TAR.stat().st_size / 1e6:.1f} MB)")
+    return code
+
+
+def cmd_load_base() -> int:
+    if not _docker_ready():
+        return 1
+    if not BASE_TAR.is_file():
+        print(f"error: {BASE_TAR.relative_to(ROOT).as_posix()} does not exist; run "
+              "save-base on a machine that has the image", file=sys.stderr)
+        return 1
+    code = _docker(["load", "-i", str(BASE_TAR)])
+    ref = base_image()
+    if code == 0 and ref and not _base_present(ref):
+        print(f"error: loaded, but {ref} is still not present", file=sys.stderr)
+        return 1
+    return code
+
+
+# -- precheck ----------------------------------------------------------------
+
+def cmd_precheck() -> int:
+    start = time.perf_counter()
+    if shutil.which("git") is None:
+        print("error: git is not installed", file=sys.stderr)
+        return 1
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True,
+                            text=True, encoding="utf-8", errors="replace").stdout.splitlines()
+    changed = [line for line in status if line and not line.startswith("??")]
+    untracked = [line for line in status if line.startswith("??")]
+    if changed:
+        print(f"WARNING: precheck tests HEAD, not your working tree: {len(changed)} "
+              "uncommitted change(s) are NOT checked. Commit first to include them.")
+    if untracked:
+        print(f"note: {len(untracked)} untracked path(s) are not in the clean clone")
+    head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                          capture_output=True, text=True).stdout.strip()
+
+    tmp = tempfile.mkdtemp(prefix="salvage-precheck-")
+    clone = os.path.join(tmp, "repo")
+    logs = os.path.join(tmp, "logs")
+    os.makedirs(logs)
+    results: list[tuple[str, bool, float, str]] = []
+
+    def step(name: str, func) -> None:
+        t0 = time.perf_counter()
+        print(f"--- {len(results) + 1}. {name}", flush=True)
+        try:
+            ok, detail = func()
+        except Exception as exc:  # noqa: BLE001 - a broken step is a FAIL, not a stop
+            ok, detail = False, f"{type(exc).__name__}: {exc}"
+        took = time.perf_counter() - t0
+        results.append((name, ok, took, detail))
+        print(f"{'PASS' if ok else 'FAIL'}  {name}  ({took:.1f} s)"
+              + (f"  {detail}" if detail else ""), flush=True)
+
+    def logged(cmd: list[str], name: str) -> tuple[bool, str]:
+        """Run ``cmd`` in the clone with its output in a log file."""
+        log = os.path.join(logs, f"{len(results) + 1}-{name}.log")
+        with open(log, "w", encoding="utf-8", errors="replace") as fh:
+            try:
+                code = subprocess.call(cmd, cwd=clone, stdout=fh, stderr=subprocess.STDOUT,
+                                       timeout=DOCKER_RUN_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                code = 124
+        if code != 0:
+            with open(log, encoding="utf-8", errors="replace") as fh:
+                tail = fh.read().splitlines()[-15:]
+            print("\n".join(f"    | {line}" for line in tail))
+        return code == 0, f"exit {code}" + ("" if code == 0 else f", log: {log}")
+
+    def task(*args: str, name: str) -> tuple[bool, str]:
+        """The CLONE's task.py, so HEAD's code is what gets checked."""
+        return logged([sys.executable, os.path.join(clone, "tools", "task.py"), *args], name)
+
+    keep = False
+    failed = 0
+    try:
+        proc = subprocess.run(["git", "clone", "--quiet", "--no-hardlinks", str(ROOT), clone],
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"error: git clone failed: {proc.stderr.strip()}", file=sys.stderr)
+            keep, failed = True, 1
+            return 1
+        print(f"precheck: HEAD {head}, clean clone in {clone}")
+        # samples/ is organizer data and may not be committed: then use the
+        # working tree's copy (read only).
+        samples = os.path.join(clone, "samples")
+        if not os.path.isdir(samples) and (ROOT / "samples").is_dir():
+            samples = str(ROOT / "samples")
+            print(f"note: samples/ is not in HEAD; using the working tree's {samples}")
+        have_samples = os.path.isdir(samples)
+
+        step("test", lambda: task("test", name="test"))
+        step("conform (full)", lambda: task(
+            "conform", *(["--samples-root", samples] if have_samples else []), name="conform"))
+        step("docs --check", lambda: task("docs", "--check", name="docs"))
+        step("lint-docker", lambda: task("lint-docker", name="lint-docker"))
+
+        def build() -> tuple[bool, str]:
+            if not _docker_ready():
+                return False, "docker is not available"
+            ref = base_image()
+            if not ref or not _base_present(ref):
+                return False, (f"base image {ref} is not present: run save-base/load-base "
+                               "or pull it")
+            return logged(["docker", "build", "--no-cache", "--network", "none",
+                           "-t", IMAGE, clone], "build")
+
+        step("build --no-cache --network none", build)
+        built = results[-1][1]
+        stale = (False, "not run: the build failed, and the existing salvage:dev image "
+                        "may not be HEAD")
+
+        def run_corpus() -> tuple[bool, str]:
+            if not built:
+                return stale
+            inp, out = os.path.join(tmp, "corpus-in"), os.path.join(tmp, "corpus-out")
+            os.makedirs(inp)
+            if have_samples:
+                shutil.copytree(samples, os.path.join(inp, "samples"))
+            for case in sorted(Path(clone, "tests").glob("*/cases/*")):
+                if case.is_file() and not case.name.endswith(".expected.json"):
+                    dest = Path(inp, "golden", case.parent.parent.name, case.name)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(case, dest)
+            n = sum(len(files) for _, _, files in os.walk(inp))
+            code = docker_run(inp, out, capture_output=True)
+            if code != 0:
+                return False, f"docker run exited {code}"
+            ok, detail = task("check-outputs", inp, out, name="check-outputs")
+            return ok, f"{n} inputs, exit 0; check-outputs {detail}"
+
+        step("docker run on samples/ + golden inputs", run_corpus)
+        step("docker-smoke", lambda: task("docker-smoke", name="docker-smoke") if built
+             else stale)
+        failed = sum(1 for _, ok, _, _ in results if not ok)
+        keep = failed > 0
+    finally:
+        total = time.perf_counter() - start
+        if results:
+            print(f"\nprecheck summary (HEAD {head})")
+            print("| # | step | result | seconds |\n|---|------|--------|--------:|")
+            for i, (name, ok, took, _) in enumerate(results, 1):
+                print(f"| {i} | {name} | {'PASS' if ok else 'FAIL'} | {took:.1f} |")
+            print(f"precheck: {len(results) - failed} PASS, {failed} FAIL; "
+                  f"total time {total:.1f} s")
+        if keep:
+            print(f"clone and logs kept for inspection in {tmp}")
+        else:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return 1 if failed else 0
+
+
 # -- golden ------------------------------------------------------------------
 
 def cmd_golden(fmt: str | None) -> int:
@@ -361,6 +685,19 @@ def main(argv: list[str]) -> int:
         return cmd_golden_update(args[0])
     if cmd == "bench" and args in ([], ["--docker"]):
         return cmd_bench(use_docker=bool(args))
+    if cmd == "docs" and set(args) <= {"--check", "--strict"}:
+        return subprocess.call([sys.executable, str(ROOT / "tools" / "build_docs.py"), *args],
+                               cwd=ROOT)
+    if cmd == "check-outputs" and len(args) == 2:
+        return cmd_check_outputs(*args)
+    if cmd == "lint-docker" and not args:
+        return cmd_lint_docker()
+    if cmd == "save-base" and not args:
+        return cmd_save_base()
+    if cmd == "load-base" and not args:
+        return cmd_load_base()
+    if cmd == "precheck" and not args:
+        return cmd_precheck()
     if cmd == "conform":
         # From the caller's directory, so relative --cases-root etc. mean what they say.
         return subprocess.call([sys.executable, "-m", "tests.conformance", *args], env=_env())

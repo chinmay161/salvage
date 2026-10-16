@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: test api run build build-offline docker-run docker-test docker-smoke golden golden-update conform bench
+.PHONY: test api run build build-offline docker-run docker-test docker-smoke golden golden-update conform bench docs check-outputs lint-docker save-base load-base precheck
 
 test:
 	$(PY) tools/task.py test
@@ -41,3 +41,22 @@ conform:
 # make bench [ARGS=--docker]
 bench:
 	$(PY) tools/task.py bench $(ARGS)
+
+# make docs [ARGS=--check]
+docs:
+	$(PY) tools/task.py docs $(ARGS)
+
+check-outputs:
+	$(PY) tools/task.py check-outputs $(IN) $(OUT)
+
+lint-docker:
+	$(PY) tools/task.py lint-docker
+
+save-base:
+	$(PY) tools/task.py save-base
+
+load-base:
+	$(PY) tools/task.py load-base
+
+precheck:
+	$(PY) tools/task.py precheck

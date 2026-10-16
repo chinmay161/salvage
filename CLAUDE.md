@@ -20,7 +20,8 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
 ## Ownership
 - Core (lead): salvage/core/, salvage/cli.py, salvage/formats/stub.py,
   tests/core/, tests/fixtures/, tools/ (except tools/fuzz.py), Dockerfile,
-  Makefile, README.md, CLAUDE.md, docs/phase-reports/.
+  Makefile, README.md, CLAUDE.md, docs/phase-reports/, docs/*/_TEMPLATE.md,
+  FORMAT-SPEC.md and FIELD-LOG.md (generated).
 - Teammates: salvage/formats/<format>.py, tests/<format>/, docs/spec/,
   docs/log/. Do not edit these unless the task explicitly says so.
 - samples/ and schema/ are read-only.
@@ -43,6 +44,14 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
 - `python tools/task.py docker-run IN OUT`  run the image on IN (read-only), writing to OUT
 - `python tools/task.py docker-test`  run the unit tests with the image's Linux Python
 - `python tools/task.py docker-smoke`  host vs container run; outputs must be byte-identical
+- `python tools/task.py docs [--check] [--strict]`  generate FORMAT-SPEC.md,
+  FIELD-LOG.md and the README formats table from docs/spec/ and docs/log/
+  (--check: write nothing, exit 1 if stale)
+- `python tools/task.py check-outputs IN OUT`  check a finished run's output
+- `python tools/task.py lint-docker`  Dockerfile: no network in RUN, FROM pinned
+- `python tools/task.py save-base` / `load-base`  base image <-> dist/base-image.tar
+- `python tools/task.py precheck`  release checklist on a clean clone of HEAD
+  (commit first)
 - `python -m salvage.core.validate`  show which output/report schemas are
   active (official in salvage/core/schemas/official/, else provisional)
 - `make <command>` wraps each of these where make exists
@@ -51,6 +60,12 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
 ## Decoders
 - Teammates follow docs/decoder-guide.md; docs/decoder-template.py is the
   tested skeleton (kept working by tests/core/test_decoder_template.py).
+
+## Generated docs
+- Never edit FORMAT-SPEC.md, FIELD-LOG.md or the README formats table by
+  hand; run `python tools/task.py docs`. Specs and logs start from
+  docs/spec/_TEMPLATE.md and docs/log/_TEMPLATE.md (files named `_*` are
+  never assembled).
 
 ## Golden tests
 - Cases live in `tests/<format>/cases/`: an input file `<name>` plus
