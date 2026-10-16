@@ -96,6 +96,7 @@ in [docs/output-format.md](docs/output-format.md).
 | Format | Extensions | Round-trip proof | Golden cases | Spec | Log |
 |--------|------------|------------------|-------------:|------|-----|
 | WKS | `.wks` | no | 4 | [yes](FORMAT-SPEC.md#wks) | yes |
+| WPD | `.wpd` | no | 4 | [yes](FORMAT-SPEC.md#wpd) | yes |
 | BRAVO | `.bravo` | no | 4 | [yes](FORMAT-SPEC.md#bravo) | yes |
 <!-- formats:end -->
 

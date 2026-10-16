@@ -1,0 +1,30 @@
+{
+  "source_file": "truncated.wpd",
+  "format": "WPD",
+  "status": "partial",
+  "metadata": {
+    "major_version": 10,
+    "minor_version": 2,
+    "product_type": 1
+  },
+  "records": [
+    {
+      "index": 0,
+      "type": "paragraph",
+      "text": "First paragraph."
+    },
+    {
+      "index": 1,
+      "type": "paragraph",
+      "text": "Incomplete second paragraph"
+    }
+  ],
+  "damage": [
+    {
+      "kind": "truncated",
+      "offset": 92,
+      "detail": "document text ends abruptly without closing paragraph delimiter",
+      "lossy": true
+    }
+  ]
+}
