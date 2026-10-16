@@ -1,0 +1,113 @@
+{
+  "confidence": 0.8,
+  "damage": [
+    {
+      "end": 63,
+      "kind": "checksum",
+      "reason": "block 1 CRC mismatch: stored 0x79ff, computed 0x0f4b",
+      "start": 50
+    }
+  ],
+  "errors": [],
+  "format": "LABLOG",
+  "members": [],
+  "meta": {
+    "channels": [
+      {
+        "index": 0,
+        "unit": "mV"
+      }
+    ],
+    "declared_block_count": 3,
+    "events": [
+      {
+        "message": "Test start",
+        "sample": 0,
+        "severity": 1
+      }
+    ],
+    "instrument": "THERMO LOGGER",
+    "sample_interval_ms": 500,
+    "start_time_utc": "1992-10-11T05:07:43Z",
+    "version": 1
+  },
+  "records": [
+    {
+      "fields": [
+        {
+          "evidence": "CRC-16 mismatch: stored 0x79ff, computed 0x0f4b",
+          "length": 2,
+          "name": "sample",
+          "offset": 57,
+          "status": "unverified",
+          "value": 0
+        },
+        {
+          "evidence": "CRC-16 mismatch: stored 0x79ff, computed 0x0f4b",
+          "length": 2,
+          "name": "time_ms",
+          "offset": 57,
+          "status": "unverified",
+          "value": 0
+        },
+        {
+          "evidence": "CRC-16 mismatch: stored 0x79ff, computed 0x0f4b",
+          "length": 2,
+          "name": "values",
+          "offset": 57,
+          "status": "unverified",
+          "value": [
+            150.5
+          ]
+        }
+      ],
+      "kind": "sample",
+      "offset": 57,
+      "status": "unverified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "CRC-16 mismatch: stored 0x79ff, computed 0x0f4b",
+          "length": 2,
+          "name": "sample",
+          "offset": 59,
+          "status": "unverified",
+          "value": 1
+        },
+        {
+          "evidence": "CRC-16 mismatch: stored 0x79ff, computed 0x0f4b",
+          "length": 2,
+          "name": "time_ms",
+          "offset": 59,
+          "status": "unverified",
+          "value": 500
+        },
+        {
+          "evidence": "CRC-16 mismatch: stored 0x79ff, computed 0x0f4b",
+          "length": 2,
+          "name": "values",
+          "offset": 59,
+          "status": "unverified",
+          "value": [
+            null
+          ]
+        }
+      ],
+      "kind": "sample",
+      "offset": 59,
+      "status": "unverified"
+    }
+  ],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "bad_crc.dat",
+    "sha256": "dc31de366e356267c899dcff0a5e8e0f1c9e9d2313370f559a6e8e5b1feb7518",
+    "size": 83
+  },
+  "status": "partial",
+  "variant": null,
+  "warnings": [
+    "block 1 CRC mismatch"
+  ]
+}

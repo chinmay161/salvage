@@ -1,0 +1,104 @@
+{
+  "confidence": 1.0,
+  "damage": [],
+  "errors": [],
+  "format": "LABLOG",
+  "members": [],
+  "meta": {
+    "channels": [
+      {
+        "index": 0,
+        "unit": "mV"
+      }
+    ],
+    "declared_block_count": 3,
+    "events": [
+      {
+        "message": "Test start",
+        "sample": 0,
+        "severity": 1
+      }
+    ],
+    "instrument": "THERMO LOGGER",
+    "sample_interval_ms": 500,
+    "start_time_utc": "1992-10-11T05:07:43Z",
+    "version": 1
+  },
+  "records": [
+    {
+      "fields": [
+        {
+          "evidence": "CRC-16 matched",
+          "length": 2,
+          "name": "sample",
+          "offset": 57,
+          "status": "verified",
+          "value": 0
+        },
+        {
+          "evidence": "CRC-16 matched",
+          "length": 2,
+          "name": "time_ms",
+          "offset": 57,
+          "status": "verified",
+          "value": 0
+        },
+        {
+          "evidence": "CRC-16 matched",
+          "length": 2,
+          "name": "values",
+          "offset": 57,
+          "status": "verified",
+          "value": [
+            150.0
+          ]
+        }
+      ],
+      "kind": "sample",
+      "offset": 57,
+      "status": "verified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "CRC-16 matched",
+          "length": 2,
+          "name": "sample",
+          "offset": 59,
+          "status": "verified",
+          "value": 1
+        },
+        {
+          "evidence": "CRC-16 matched",
+          "length": 2,
+          "name": "time_ms",
+          "offset": 59,
+          "status": "verified",
+          "value": 500
+        },
+        {
+          "evidence": "CRC-16 matched",
+          "length": 2,
+          "name": "values",
+          "offset": 59,
+          "status": "verified",
+          "value": [
+            null
+          ]
+        }
+      ],
+      "kind": "sample",
+      "offset": 59,
+      "status": "verified"
+    }
+  ],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "clean.dat",
+    "sha256": "15a4b3633042236fe28dd8b68e8bb5b4f33ceb2e6f97db4cc815950d13479f53",
+    "size": 83
+  },
+  "status": "decoded",
+  "variant": null,
+  "warnings": []
+}

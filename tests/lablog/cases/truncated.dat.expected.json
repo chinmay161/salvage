@@ -1,0 +1,40 @@
+{
+  "confidence": 1.0,
+  "damage": [
+    {
+      "end": 56,
+      "kind": "truncated",
+      "reason": "block 1 truncated: declared 7 bytes payload + 2 CRC, only 0 remaining",
+      "start": 50
+    }
+  ],
+  "errors": [],
+  "format": "LABLOG",
+  "members": [],
+  "meta": {
+    "channels": [
+      {
+        "index": 0,
+        "unit": "mV"
+      }
+    ],
+    "declared_block_count": 3,
+    "events": [],
+    "instrument": "THERMO LOGGER",
+    "sample_interval_ms": 500,
+    "start_time_utc": "1992-10-11T05:07:43Z",
+    "version": 1
+  },
+  "records": [],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "truncated.dat",
+    "sha256": "e6871c679b03d84bf8245d58d249c9d6eb7a24b45d57a0aaf033d4c865138ec9",
+    "size": 56
+  },
+  "status": "partial",
+  "variant": null,
+  "warnings": [
+    "declared 3 blocks, but only 1 recovered"
+  ]
+}
