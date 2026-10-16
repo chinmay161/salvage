@@ -1,0 +1,2036 @@
+{
+  "tool_version": "0.1.0",
+  "files": [
+    {
+      "file": "s01.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s02.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s03.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s04.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s05.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s06.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s07.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s08.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s09.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s10.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s11.wks",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s12.wks",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s13.wks",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s14.wpd",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s15.wpd",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s16.bravo",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s17.bravo",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s18.cvt",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s19.cvt",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s20.000",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s21.000",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s22.000",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s23.wad",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s24.pak",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s25_random.bin",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s26_empty.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s27_notes.txt",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s28_tiny.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s29_almost_libra.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    },
+    {
+      "file": "s30_png_like.dat",
+      "format": "UNKNOWN",
+      "status": "unrecognized",
+      "records": 0,
+      "damage": 0
+    }
+  ],
+  "totals": {
+    "ok": 0,
+    "partial": 0,
+    "unsupported": 0,
+    "unrecognized": 30,
+    "failed": 0
+  },
+  "diagnostics": {
+    "summary": {
+      "files": 30,
+      "skipped": 1,
+      "by_format": {
+        "UNKNOWN": 30
+      }
+    },
+    "files": [
+      {
+        "input": "s01.dat",
+        "output": "s01.dat.json",
+        "size": 289,
+        "sha256": "218e4c2da04d66ba016baa5e67845eed185c73cbf5ac3ccad0b251e44e0fd09c",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 289,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              289
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 289,
+          "sha256": "218e4c2da04d66ba016baa5e67845eed185c73cbf5ac3ccad0b251e44e0fd09c",
+          "entropy": 5.8226,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s02.dat",
+        "output": "s02.dat.json",
+        "size": 424,
+        "sha256": "594a9799d8998104e30425fa6a36cdc8436e2415739deffde29371cd08b7d3d4",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 424,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              424
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 424,
+          "sha256": "594a9799d8998104e30425fa6a36cdc8436e2415739deffde29371cd08b7d3d4",
+          "entropy": 5.8461,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s03.dat",
+        "output": "s03.dat.json",
+        "size": 311,
+        "sha256": "55b4915b7b7f993aa2b6b2eaccc140cc84482ead62853bfa19f597405a5bd4d6",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 311,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              311
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 311,
+          "sha256": "55b4915b7b7f993aa2b6b2eaccc140cc84482ead62853bfa19f597405a5bd4d6",
+          "entropy": 5.7226,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s04.dat",
+        "output": "s04.dat.json",
+        "size": 259,
+        "sha256": "b38f6e38270ff0698def2267d7fc87ce46ade8508039edcfa90356337741b6c3",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 259,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              259
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 259,
+          "sha256": "b38f6e38270ff0698def2267d7fc87ce46ade8508039edcfa90356337741b6c3",
+          "entropy": 5.6126,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s05.dat",
+        "output": "s05.dat.json",
+        "size": 229,
+        "sha256": "f314e8bd31a0bb80cfb2fc24279a4cd3bd0264eea4fbceaf08bf5c6bce0ce1bd",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 229,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              229
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 229,
+          "sha256": "f314e8bd31a0bb80cfb2fc24279a4cd3bd0264eea4fbceaf08bf5c6bce0ce1bd",
+          "entropy": 5.4121,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s06.dat",
+        "output": "s06.dat.json",
+        "size": 313,
+        "sha256": "b0d7c44f07a6c118a702644cc8517de44b6a9b7e6c98a3146979d0d0a68d1327",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 313,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              313
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 313,
+          "sha256": "b0d7c44f07a6c118a702644cc8517de44b6a9b7e6c98a3146979d0d0a68d1327",
+          "entropy": 5.6982,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s07.dat",
+        "output": "s07.dat.json",
+        "size": 334,
+        "sha256": "52483d3ef44cd8eab6604ff678b7496eff1d9348435b58909175bd3a1a856b58",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 334,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              334
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 334,
+          "sha256": "52483d3ef44cd8eab6604ff678b7496eff1d9348435b58909175bd3a1a856b58",
+          "entropy": 5.7247,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s08.dat",
+        "output": "s08.dat.json",
+        "size": 307,
+        "sha256": "0180fe36593ca3c5fd1521a277d3a782b4aeeee55e9201fe22fece32e414c42e",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 307,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              307
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 307,
+          "sha256": "0180fe36593ca3c5fd1521a277d3a782b4aeeee55e9201fe22fece32e414c42e",
+          "entropy": 6.7453,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s09.dat",
+        "output": "s09.dat.json",
+        "size": 230,
+        "sha256": "cdaac69fc1ddc004b7b15aa105fcb7f1016c34fdb82b42411397ace329824155",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 230,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              230
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 230,
+          "sha256": "cdaac69fc1ddc004b7b15aa105fcb7f1016c34fdb82b42411397ace329824155",
+          "entropy": 5.6015,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s10.dat",
+        "output": "s10.dat.json",
+        "size": 322,
+        "sha256": "848a1af9605440d5b5d0c504f4b0547a998af5690facc320fd134f58b8019ff4",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 322,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              322
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 322,
+          "sha256": "848a1af9605440d5b5d0c504f4b0547a998af5690facc320fd134f58b8019ff4",
+          "entropy": 6.6163,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s11.wks",
+        "output": "s11.wks.json",
+        "size": 452,
+        "sha256": "4097905eef968a466d7f4b3c6518a4679d29a713439546695b6e9e40e91afc7d",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 452,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              452
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 452,
+          "sha256": "4097905eef968a466d7f4b3c6518a4679d29a713439546695b6e9e40e91afc7d",
+          "entropy": 4.1699,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s12.wks",
+        "output": "s12.wks.json",
+        "size": 409,
+        "sha256": "1ef95431c37a965e464357173983b0bf677f03887f1e6b9aed3a2ecfed2c4a9e",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 409,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              409
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 409,
+          "sha256": "1ef95431c37a965e464357173983b0bf677f03887f1e6b9aed3a2ecfed2c4a9e",
+          "entropy": 4.3079,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s13.wks",
+        "output": "s13.wks.json",
+        "size": 409,
+        "sha256": "1a18ae21bdd7e273d28a04016136f2e2d04126e3078f00b533f44a4f0470f800",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 409,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              409
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 409,
+          "sha256": "1a18ae21bdd7e273d28a04016136f2e2d04126e3078f00b533f44a4f0470f800",
+          "entropy": 3.733,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s14.wpd",
+        "output": "s14.wpd.json",
+        "size": 288,
+        "sha256": "58104000ba0aac2f4e586faa0a2dad6f997e4df7014cdc16bc785e282b288421",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 288,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              288
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 288,
+          "sha256": "58104000ba0aac2f4e586faa0a2dad6f997e4df7014cdc16bc785e282b288421",
+          "entropy": 5.0297,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s15.wpd",
+        "output": "s15.wpd.json",
+        "size": 136,
+        "sha256": "2e80247d079a98f734595527582e745a030b7467ed86ba1e0deba83567072238",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 136,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              136
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 136,
+          "sha256": "2e80247d079a98f734595527582e745a030b7467ed86ba1e0deba83567072238",
+          "entropy": 4.5403,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s16.bravo",
+        "output": "s16.bravo.json",
+        "size": 144,
+        "sha256": "ee087262d07dd563c867baeae562efd84fc905eb952c4fa422e73a27f9cb8713",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 144,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              144
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 144,
+          "sha256": "ee087262d07dd563c867baeae562efd84fc905eb952c4fa422e73a27f9cb8713",
+          "entropy": 4.6143,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s17.bravo",
+        "output": "s17.bravo.json",
+        "size": 145,
+        "sha256": "3e7dbba3db19d74ec7a859f7bc4f75dea951f409282d4958076f4e114e0ef9cf",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 145,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              145
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 145,
+          "sha256": "3e7dbba3db19d74ec7a859f7bc4f75dea951f409282d4958076f4e114e0ef9cf",
+          "entropy": 4.7327,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s18.cvt",
+        "output": "s18.cvt.json",
+        "size": 1270,
+        "sha256": "d915d323a470a1373b31bc0cba0b49251d0af5a64ae402af4142d12f1e5b32fc",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 1270,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              1270
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 1270,
+          "sha256": "d915d323a470a1373b31bc0cba0b49251d0af5a64ae402af4142d12f1e5b32fc",
+          "entropy": 4.0817,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s19.cvt",
+        "output": "s19.cvt.json",
+        "size": 1778,
+        "sha256": "55b6fd8a09ad48a642aaed8f1cd382d37e5f05d324847d5c3ef556aa084b39af",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 1778,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              1778
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 1778,
+          "sha256": "55b6fd8a09ad48a642aaed8f1cd382d37e5f05d324847d5c3ef556aa084b39af",
+          "entropy": 2.9639,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s20.000",
+        "output": "s20.000.json",
+        "size": 287,
+        "sha256": "f19ea5c13e8a77fb755ef58f03ea85a0c3adda1e994d93c41b0798ede31754c4",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 287,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              287
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 287,
+          "sha256": "f19ea5c13e8a77fb755ef58f03ea85a0c3adda1e994d93c41b0798ede31754c4",
+          "entropy": 4.991,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s21.000",
+        "output": "s21.000.json",
+        "size": 303,
+        "sha256": "1f6d3984712b07d4acc83825082ffacb3d1fde55cd316298a8bb2f05b966810c",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 303,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              303
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 303,
+          "sha256": "1f6d3984712b07d4acc83825082ffacb3d1fde55cd316298a8bb2f05b966810c",
+          "entropy": 4.7875,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s22.000",
+        "output": "s22.000.json",
+        "size": 210,
+        "sha256": "ce871c3ad94219aecccccab8cdc6e8f96c1a7958cc7b47cc06883ee8226498a9",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 210,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              210
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 210,
+          "sha256": "ce871c3ad94219aecccccab8cdc6e8f96c1a7958cc7b47cc06883ee8226498a9",
+          "entropy": 4.7656,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s23.wad",
+        "output": "s23.wad.json",
+        "size": 326,
+        "sha256": "c6b954476d4cc39eba41118caeccbf98ce19a569a0549b0200885c171c8d80b4",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 326,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              326
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 326,
+          "sha256": "c6b954476d4cc39eba41118caeccbf98ce19a569a0549b0200885c171c8d80b4",
+          "entropy": 6.3749,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s24.pak",
+        "output": "s24.pak.json",
+        "size": 475,
+        "sha256": "4d83133312e5b00541ec650a8a8b2494238d2026b7cc9c0ff31205707de03966",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 475,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              475
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 475,
+          "sha256": "4d83133312e5b00541ec650a8a8b2494238d2026b7cc9c0ff31205707de03966",
+          "entropy": 5.069,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s25_random.bin",
+        "output": "s25_random.bin.json",
+        "size": 300,
+        "sha256": "c6b124794a1fb31ec77bbd3a5267219bf2cbd757bfc46c1e5a09d89dabfcf884",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 300,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              300
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 300,
+          "sha256": "c6b124794a1fb31ec77bbd3a5267219bf2cbd757bfc46c1e5a09d89dabfcf884",
+          "entropy": 7.2465,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s26_empty.dat",
+        "output": "s26_empty.dat.json",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 0,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": null,
+          "accounted_pct": null,
+          "unexplained": [],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "entropy": 0.0,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s27_notes.txt",
+        "output": "s27_notes.txt.json",
+        "size": 30,
+        "sha256": "d02e6b03804b67f5d14e05359c151901944a4bf54d672bdfac9433b895ffbbb2",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 30,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              30
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 30,
+          "sha256": "d02e6b03804b67f5d14e05359c151901944a4bf54d672bdfac9433b895ffbbb2",
+          "entropy": 3.7526,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s28_tiny.dat",
+        "output": "s28_tiny.dat.json",
+        "size": 1,
+        "sha256": "72dfcfb0c470ac255cde83fb8fe38de8a128188e03ea5ba5b2a93adbea1062fa",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 1,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              1
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 1,
+          "sha256": "72dfcfb0c470ac255cde83fb8fe38de8a128188e03ea5ba5b2a93adbea1062fa",
+          "entropy": 0.0,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s29_almost_libra.dat",
+        "output": "s29_almost_libra.dat.json",
+        "size": 7,
+        "sha256": "3fc807f3f3b646a52fa0326ba4ffb75d6e2aa53d61cc9b144fbd3a2ebf3d37f1",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 7,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              7
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 7,
+          "sha256": "3fc807f3f3b646a52fa0326ba4ffb75d6e2aa53d61cc9b144fbd3a2ebf3d37f1",
+          "entropy": 2.8074,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      },
+      {
+        "input": "s30_png_like.dat",
+        "output": "s30_png_like.dat.json",
+        "size": 28,
+        "sha256": "d6bfb65da26ddd0e28faab941fcee0967f009c03a52cce8d2c035ddfe35d2b1f",
+        "status": "unrecognized",
+        "format": "UNKNOWN",
+        "variant": null,
+        "confidence": 0.0,
+        "probe_score": 0.0,
+        "candidates": [
+          {
+            "format": "STUB",
+            "score": 0.0
+          }
+        ],
+        "attempts": [],
+        "records_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "fields_by_status": {
+          "verified": 0,
+          "consistent": 0,
+          "unverified": 0,
+          "lost": 0
+        },
+        "members": 0,
+        "damage": [],
+        "coverage": {
+          "bytes_total": 28,
+          "bytes_explained": 0,
+          "bytes_padding": 0,
+          "explained_pct": 0.0,
+          "accounted_pct": 0.0,
+          "unexplained": [
+            [
+              0,
+              28
+            ]
+          ],
+          "unexplained_truncated": false
+        },
+        "bytes": {
+          "size": 28,
+          "sha256": "d6bfb65da26ddd0e28faab941fcee0967f009c03a52cce8d2c035ddfe35d2b1f",
+          "entropy": 1.6488,
+          "entropy_sampled": false,
+          "top_candidates": [
+            {
+              "format": "STUB",
+              "score": 0.0
+            }
+          ]
+        },
+        "warnings": [],
+        "errors": []
+      }
+    ],
+    "skipped": [
+      {
+        "input": "nested",
+        "reason": "directory (not entered: the walk is non-recursive)"
+      }
+    ],
+    "warnings": [],
+    "errors": []
+  }
+}
