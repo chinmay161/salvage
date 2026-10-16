@@ -1,0 +1,70 @@
+{
+  "source_file": "corrupted_packed.000",
+  "format": "EBCDIC-DUMP",
+  "status": "partial",
+  "metadata": {
+    "run_date": "1999-03-14",
+    "title": "STUDENT EXTRACT",
+    "trailer_count": 5,
+    "trailer_credits_total": 402
+  },
+  "records": [
+    {
+      "student_id": "909014",
+      "name": "KHAN, IMRAN",
+      "dob": "1978-10-11",
+      "gpa": null,
+      "credits": 40,
+      "status": "G",
+      "balance": 698.36,
+      "verified": false,
+      "issues": [
+        "invalid_value"
+      ]
+    },
+    {
+      "student_id": "935798",
+      "name": "ADAMS, PRIYA",
+      "dob": "1983-10-27",
+      "gpa": 3.7,
+      "credits": 74,
+      "status": "G",
+      "balance": 875.42
+    },
+    {
+      "student_id": "908015",
+      "name": "BOSE, ARJUN",
+      "dob": "1986-10-02",
+      "gpa": 1.62,
+      "credits": 82,
+      "status": "W",
+      "balance": 88.5
+    },
+    {
+      "student_id": "683591",
+      "name": "PATIL, MEERA",
+      "dob": "1987-08-16",
+      "gpa": 2.68,
+      "credits": 84,
+      "status": "W",
+      "balance": 490.59
+    },
+    {
+      "student_id": "796852",
+      "name": "O'NEIL, KEVIN",
+      "dob": "1982-08-11",
+      "gpa": 2.54,
+      "credits": 122,
+      "status": "G",
+      "balance": 762.09
+    }
+  ],
+  "damage": [
+    {
+      "kind": "invalid_value",
+      "offset": 69,
+      "detail": "record 0: invalid high nibble 0xf in byte 1",
+      "lossy": true
+    }
+  ]
+}

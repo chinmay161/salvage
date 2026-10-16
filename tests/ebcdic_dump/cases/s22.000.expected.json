@@ -1,0 +1,48 @@
+{
+  "source_file": "s22.000",
+  "format": "EBCDIC-DUMP",
+  "status": "partial",
+  "metadata": {
+    "run_date": "1999-06-05",
+    "title": "STUDENT EXTRACT",
+    "trailer_count": null,
+    "trailer_credits_total": null
+  },
+  "records": [
+    {
+      "student_id": "750841",
+      "name": "IYER, KAVYA",
+      "dob": "1983-09-14",
+      "gpa": 2.3,
+      "credits": 129,
+      "status": "W",
+      "balance": 764.8
+    },
+    {
+      "student_id": "492190",
+      "name": "O'NEIL, KEVIN",
+      "dob": "1986-10-24",
+      "gpa": 3.63,
+      "credits": 86,
+      "status": "W",
+      "balance": 526.89
+    },
+    {
+      "student_id": "608029",
+      "name": "ADAMS, PRIYA",
+      "dob": "1983-11-15",
+      "gpa": 3.04,
+      "credits": 85,
+      "status": "W",
+      "balance": -270.12
+    }
+  ],
+  "damage": [
+    {
+      "kind": "truncated",
+      "offset": 177,
+      "detail": "record of length 48 truncated by end of file",
+      "lossy": true
+    }
+  ]
+}

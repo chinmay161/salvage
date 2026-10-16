@@ -1,0 +1,59 @@
+{
+  "source_file": "s21.000",
+  "format": "EBCDIC-DUMP",
+  "status": "ok",
+  "metadata": {
+    "run_date": "1999-06-24",
+    "title": "STUDENT EXTRACT",
+    "trailer_count": 5,
+    "trailer_credits_total": 546
+  },
+  "records": [
+    {
+      "student_id": "328015",
+      "name": "SHAH, DEV",
+      "dob": "1975-11-25",
+      "gpa": 3.08,
+      "credits": 154,
+      "status": "G",
+      "balance": 549.29
+    },
+    {
+      "student_id": "127907",
+      "name": "NAIR, SUNIL",
+      "dob": "1979-04-06",
+      "gpa": 2.41,
+      "credits": 71,
+      "status": "G",
+      "balance": -125.5
+    },
+    {
+      "student_id": "454721",
+      "name": "IYER, KAVYA",
+      "dob": "1984-09-11",
+      "gpa": 3.02,
+      "credits": 115,
+      "status": "A",
+      "balance": 63.1
+    },
+    {
+      "student_id": "336175",
+      "name": "KHAN, IMRAN",
+      "dob": "1980-08-18",
+      "gpa": 1.85,
+      "credits": 106,
+      "status": "W",
+      "balance": -0.01
+    },
+    {
+      "student_id": "108001",
+      "name": "O'NEIL, KEVIN",
+      "dob": "1981-05-01",
+      "gpa": 2.62,
+      "credits": 100,
+      "status": "W",
+      "balance": -12.07
+    }
+  ],
+  "damage": []
+}
