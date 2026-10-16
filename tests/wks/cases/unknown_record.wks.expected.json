@@ -1,0 +1,17 @@
+{
+  "source_file": "unknown_record.wks",
+  "format": "WKS",
+  "status": "partial",
+  "metadata": {
+    "version_code": "0x0404"
+  },
+  "records": [],
+  "damage": [
+    {
+      "kind": "unknown_record",
+      "offset": 6,
+      "detail": "unknown record opcode 0x0099 length 4",
+      "lossy": false
+    }
+  ]
+}

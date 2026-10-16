@@ -8,8 +8,96 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 
 | Format | Entries | Confirmed | Rejected | Inconclusive |
 |--------|--------:|----------:|---------:|-------------:|
-| **Total** | **0** | **0** | **0** | **0** |
+| WKS | 8 | 7 | 1 | 0 |
+| **Total** | **8** | **7** | **1** | **0** |
 
 ## Entries
 
-No entries yet.
+### 2026-10-16 13:53 — [WKS] Record framing is 16-bit opcode and 16-bit length little-endian?
+
+**Hypothesis:** WKS stream consists of 2-byte opcode and 2-byte payload length in little-endian byte order.
+
+**Tried:** Read 4-byte headers starting at offset 0x0000 across `kit/samples/s11.wks`, `s12.wks`, and `s13.wks` and hopped payload lengths.
+
+**Evidence:** Offset 0x0000 begins with `00 00 02 00` (`opcode=0x0000`, `length=2`). Advancing by `4 + length` lands cleanly on next record `06 00 08 00` at offset 0x0006 in all 3 samples. In `s11.wks`, walking consecutive records terminates cleanly at EOF opcode `0x0001` (length 0) at offset 0x01c0 (total 452 bytes). Reading big-endian fails on record 1.
+
+**Result:** CONFIRMED. The 4-byte header is `<HH` (opcode, length).
+
+### 2026-10-16 13:57 — [WKS] Header opcode 0x0000 version code and opcode 0x0006 range boundaries
+
+**Hypothesis:** Opcode 0x0000 contains spreadsheet version `0x0404`, and opcode 0x0006 contains spreadsheet coordinate range.
+
+**Tried:** Unpacked uint16le values from payload of 0x0000 and 0x0006 in `s11.wks` and compared with reference JSON `kit/expected_outputs/s11.wks.json`.
+
+**Evidence:** Opcode 0x0000 payload is `04 04` (`0x0404`), matching `"version_code": "0x0404"` in `s11.wks.json`. Opcode 0x0006 payload in `s11.wks` has 8 bytes `00 00 00 00 03 00 04 00`, which unpacks as 4 uint16le `(0, 0, 3, 4)` representing col 0..3 (A..D) and row 0..4 (1..5), matching `"declared_range": "A1:D5"`. In `s12.wks`, payload is `00 00 00 00 02 00 06 00` representing `A1:C7`.
+
+**Result:** CONFIRMED. Range bounds are 4 uint16le values `(col_start, row_start, col_end, row_end)`.
+
+### 2026-10-16 14:02 — [WKS] Opcode 0x0008 represents column width settings
+
+**Hypothesis:** Opcode 0x0008 stores column width overrides.
+
+**Tried:** Unpacked 3-byte payload of opcode 0x0008 in `s11.wks` (`00 00 0e`) and `s12.wks` (`00 00 14` and `01 00 0c`).
+
+**Evidence:** In `s11.wks`, byte 0-1 is column index 0 (`A`), and byte 2 is `0x0e` (14). This matches `"column_widths": {"A": 14}` in `s11.wks.json`. In `s12.wks`, column 0 has width 20 and column 1 has width 12.
+
+**Result:** CONFIRMED. Structure is `<HB` (col uint16le, width uint8).
+
+### 2026-10-16 14:05 — [WKS] Cell opcodes: 0x0c (blank), 0x0d (integer), 0x0e (number), 0x0f (label), 0x10 (formula)
+
+**Hypothesis:** Opcodes 0x0c, 0x0d, 0x0e, 0x0f, and 0x10 correspond to blank, integer, number, label, and formula cells with format byte at offset 0.
+
+**Tried:** Parsed cell payloads in `s11.wks` and cross-referenced coordinates, types, and values with `kit/expected_outputs/s11.wks.json`.
+
+**Evidence:**
+- Opcode 0x0d (len 7): `ff 01 00 01 00 2f 00` gives format 0xff, col 1, row 1, int16 value 47 (cell B2). All 4 integer cells match reference.
+- Opcode 0x0e (len 13): `22 02 00 01 00 3d 0a d7 a3 70 fd 33 40` gives format 0x22, col 2, row 1, 64-bit float IEEE 754 value 19.99 (cell C2). All 4 float cells match reference.
+- Opcode 0x0f (len 11..15): `ff 00 00 00 00 27 49 74 65 6d 00` gives format 0xff, col 0, row 0, alignment `'` (0x27), text `"Item\0"` (cell A1).
+- Opcode 0x10 (len 27): `22 03 00 01 00 <8-byte float 939.53> 0c 00 <12 raw bytes>` gives cached float value 939.53 and 12 formula bytes `"010100010001020001000b03"`.
+- Opcode 0x0c (len 5): in `s12.wks`, col 2, row 2 is blank.
+
+**Result:** CONFIRMED. All cell types match reference expected outputs.
+
+### 2026-10-16 14:08 — [WKS] Label alignment prefixes strip from cell value
+
+**Hypothesis:** The first character of label payload after coordinates is an alignment prefix that must be mapped to `alignment` and stripped from `value`.
+
+**Tried:** Inspected byte 5 of opcode 0x0f in `s11.wks` and `s12.wks`.
+
+**Evidence:**
+- `0x27` (`'`): left-aligned (`'Item'` becomes `value: "Item", alignment: "left"`).
+- `0x22` (`"`): right-aligned (in `s12.wks`: `"right-aligned"`).
+- `0x5e` (`^`): centered (in `s12.wks`: `^INVENTORY`).
+- `0x5c` (`\`): repeat fill (in `s12.wks`: `\-`).
+
+**Result:** CONFIRMED. Prefix character determines alignment and is stripped from the output value.
+
+### 2026-10-16 14:12 — [WKS] Number format 0x22 should be emitted on all cells
+
+**Hypothesis:** Every formatted cell (such as format byte 0x22 for currency) should emit a `number_format` field in reference JSON.
+
+**Tried:** Checked `kit/expected_outputs/s11.wks.json` on cell C2 and D2 (both having format byte 0x22).
+
+**Evidence:** `s11.wks.json` has only `{'cell', 'col', 'row', 'type', 'value'}` for C2 and `{'cell', 'col', 'row', 'type', 'cached_value', 'formula_raw_hex'}` for D2. No `number_format` key exists anywhere in `s11.wks.json`. Emitting `number_format` causes a key mismatch against reference output.
+
+**Result:** REJECTED. In reference output calibration, standard currency/general format is not emitted as an explicit `number_format` string unless required by specific date formatting.
+
+### 2026-10-16 14:15 — [WKS] Lotus 1-2-3 date epoch and leap year bug
+
+**Hypothesis:** Lotus date serial numbers count days from 1899-12-30 due to the 1900 leap year bug.
+
+**Tried:** Tested date conversion algorithms against Lotus 1-2-3 specification where serial 1 is 1900-01-01 and serial 60 is treated as 1900-02-29.
+
+**Evidence:** For date numbers >= 60, formula `date(1899, 12, 30) + timedelta(days=n)` correctly aligns post-1900 dates to ISO `YYYY-MM-DD`. For date serial 34181, this yields `1993-07-31`.
+
+**Result:** CONFIRMED. Lotus epoch base is 1899-12-30 for dates after 1900-02-28.
+
+### 2026-10-16 14:18 — [WKS] Handling damage: unknown opcodes and truncated files
+
+**Hypothesis:** Opcode 0x00fa in `s12.wks` is an unknown record that can be safely skipped, and `s13.wks` is truncated at offset 401.
+
+**Tried:** Parsed `s12.wks` skipping unknown opcode 0x00fa by length 6, and parsed `s13.wks` checking file bounds.
+
+**Evidence:** In `s12.wks` at offset 0x0073 (115), opcode 0x00fa declares length 6. Skipping 6 bytes lands on opcode 0x000f at offset 0x007d. All subsequent records parse cleanly to EOF. In `s13.wks`, at offset 0x0191 (401), opcode 0x000e declares length 13 but file ends at 409 (only 4 bytes remain), triggering damage `truncated` at offset 401.
+
+**Result:** CONFIRMED. Resync and damage reporting succeed without crashing.
