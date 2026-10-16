@@ -103,7 +103,7 @@ class FormatSpecTests(Base):
 
     def test_links_rebased_to_repo_root(self):
         spec = self.generate()[0]["FORMAT-SPEC.md"]
-        self.assertIn("[the decoder](salvage/formats/libra98.py)", spec)
+        self.assertIn("[the decoder](salvagekit/formats/libra98.py)", spec)
         self.assertIn("[the output format](docs/output-format.md)", spec)
 
     def test_missing_sections_and_wrong_heading_warn(self):
@@ -119,7 +119,7 @@ class FormatSpecTests(Base):
         self.assertFalse([x for x in w if x.startswith(("docs/spec/libra98.md",
                                                         "docs/spec/lablog.md"))])
         self.assertIn("docs/spec/zeta.md: no decoder found for this module "
-                      "(salvage/formats/zeta.py)", w)
+                      "(salvagekit/formats/zeta.py)", w)
         self.assertIn("VAULT: no spec (docs/spec/vault.md)", w)
         self.assertIn("VAULT: no research log (docs/log/vault.md)", w)
         self.assertFalse([x for x in w if "stub" in x.lower() or "_TEMPLATE" in x])

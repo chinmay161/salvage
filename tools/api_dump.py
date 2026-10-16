@@ -1,4 +1,4 @@
-"""Print the public API of salvage.core.* and salvage.formats.* (sorted).
+"""Print the public API of salvagekit.core.* and salvagekit.formats.* (sorted).
 
 Used to validate the Phase 0 contract: ``python tools/api_dump.py``.
 """
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-PACKAGES = ("salvage.core", "salvage.formats")
+PACKAGES = ("salvagekit.core", "salvagekit.formats")
 
 
 def _sig(obj: object) -> str:

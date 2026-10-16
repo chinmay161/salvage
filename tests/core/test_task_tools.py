@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+import json
 import os
 import struct
 import subprocess
@@ -68,18 +69,24 @@ class CheckOutputsTests(unittest.TestCase):
             inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
             os.makedirs(os.path.join(inp, "sub"))
             for rel, data in {"a.stub": magic + struct.pack("<H1I", 1, 5),
-                              "sub/b.bin": b"xyz"}.items():
+                              "b.bin": b"xyz", "sub/c.bin": b"skipped"}.items():
                 with open(os.path.join(inp, *rel.split("/")), "wb") as fh:
                     fh.write(data)
-            proc = subprocess.run([sys.executable, "-m", "salvage.cli", "--jobs", "1", inp, out],
+            proc = subprocess.run([sys.executable, "-m", "salvagekit.cli", "--jobs", "1", inp, out],
                                   cwd=ROOT, capture_output=True, timeout=120)
             self.assertEqual(proc.returncode, 0)
             buf = io.StringIO()
             with redirect_stdout(buf):
                 self.assertEqual(task.cmd_check_outputs(inp, out), 0)
-            self.assertIn("2 inputs, 3 files in output, 0 problems", buf.getvalue())
+            self.assertIn("2 inputs, 1 skipped, 3 files in output, 0 problems",
+                          buf.getvalue())
 
-            os.remove(os.path.join(out, "sub", "b.bin.json"))
+            with open(os.path.join(out, "report.json"), encoding="utf-8") as fh:
+                rep = json.load(fh)
+            rep["totals"]["ok"] += 1
+            with open(os.path.join(out, "report.json"), "w", encoding="utf-8") as fh:
+                json.dump(rep, fh)
+            os.remove(os.path.join(out, "b.bin.json"))
             with open(os.path.join(out, "a.stub.json"), "w", encoding="utf-8") as fh:
                 fh.write('{"status": "nonsense"}')
             with open(os.path.join(out, "extra.json"), "w", encoding="utf-8") as fh:
@@ -88,9 +95,10 @@ class CheckOutputsTests(unittest.TestCase):
             with redirect_stdout(buf):
                 self.assertEqual(task.cmd_check_outputs(inp, out), 1)
             text = buf.getvalue()
-            self.assertIn("FAIL  missing output: sub/b.bin.json", text)
+            self.assertIn("FAIL  missing output: b.bin.json", text)
             self.assertIn("FAIL  unexpected file: extra.json", text)
             self.assertIn("FAIL  a.stub.json: ", text)
+            self.assertIn("FAIL  report.json: totals ", text)
 
 
 if __name__ == "__main__":

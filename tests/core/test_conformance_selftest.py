@@ -119,6 +119,20 @@ class FixtureTests(unittest.TestCase):
         warns = [f for f in self.report("nocases").findings if f.check_id == "C11"]
         self.assertEqual([f.severity for f in warns], [cf.WARN, cf.WARN])
 
+    def test_badshape_c12(self):
+        found = self.fails("badshape", "C12")
+        texts = [f.message for f in found]
+        self.assertEqual(texts, [
+            "records[0]: missing graded field 'index' (and 3 more records)",
+            "records[0]: missing graded field 'text'",
+            "records[0]: field 'magic' is not a graded BRAVO field "
+            "(allowed: index, text, verified, issues)",
+            "records[0]: field 'count' is not a graded BRAVO field "
+            "(allowed: index, text, verified, issues)"])
+        # Fixture packages are exempt from the contract-name rule: only C12 fails.
+        self.assertEqual({f.check_id for f in self.report("badshape").findings
+                          if f.severity == cf.FAIL}, {"C12"}, self.lines)
+
     def test_runner_lines(self):
         lines = cf.format_lines([self.report("ok"), self.report("liar")])
         self.assertRegex(lines[0], r"^PASS  CF-OK +1 inputs, \d+ variants, 0 warnings$")
@@ -138,6 +152,24 @@ class DiscoveryErrorTests(unittest.TestCase):
                       " ".join(f.message for f in by_module["tests.fixtures.fake_formats.good"]
                                .findings))
         self.assertEqual(cf.run_conformance("tests.fixtures.fake_formats", only="nope"), [])
+
+
+class ContractNameTests(unittest.TestCase):
+    """C1 in the real package: decoder names are contract format names."""
+
+    def problems(self, name, contract_names=True):
+        dec = type("D", (), {"name": name, "extensions": (".x",)})()
+        return cf.metadata_problems(dec, contract_names)
+
+    def test_contract_names_and_test_only_pass(self):
+        for name in ("LIBRA-98", "EBCDIC-DUMP", "WAD", "STUB"):
+            self.assertEqual(self.problems(name), [], name)
+
+    def test_other_names_fail_only_in_the_real_package(self):
+        self.assertEqual(len(self.problems("LIBRA98")), 1)
+        self.assertIn("not a contract format name", self.problems("LIBRA98")[0])
+        self.assertEqual(len(self.problems("UNKNOWN")), 1)   # not a decoder's format
+        self.assertEqual(self.problems("CF-OK", contract_names=False), [])
 
 
 class VariantTests(unittest.TestCase):
@@ -196,14 +228,14 @@ class VariantTests(unittest.TestCase):
 
 
 class StaticRuleTests(unittest.TestCase):
-    def problems(self, source, module="salvage.formats.x"):
-        checker = cf._StaticChecker(module, "salvage.formats", is_pkg=False)
+    def problems(self, source, module="salvagekit.formats.x"):
+        checker = cf._StaticChecker(module, "salvagekit.formats", is_pkg=False)
         checker.visit(ast.parse(source))
         return [rule for _, rule in checker.problems], checker.helpers
 
     def test_allowed(self):
-        src = ("import struct, zlib, re\nfrom salvage.core import checksums\n"
-               "from salvage.core.model import Field\nfrom salvage.formats import _shared\n"
+        src = ("import struct, zlib, re\nfrom salvagekit.core import checksums\n"
+               "from salvagekit.core.model import Field\nfrom salvagekit.formats import _shared\n"
                "from . import _util\nfrom ._more import helper\n"
                "from datetime import datetime, timezone\n"
                "re.compile('x')\ndatetime.fromtimestamp(0, timezone.utc)\n"
@@ -211,30 +243,30 @@ class StaticRuleTests(unittest.TestCase):
                "if __name__ == '__main__':\n    import os\n    open('x')\n")
         problems, helpers = self.problems(src)
         self.assertEqual(problems, [])
-        self.assertEqual(helpers, {"salvage.formats._shared", "salvage.formats._util",
-                                   "salvage.formats._more"})
+        self.assertEqual(helpers, {"salvagekit.formats._shared", "salvagekit.formats._util",
+                                   "salvagekit.formats._more"})
 
     def test_refused(self):
         src = ("import os.path\nfrom urllib import request\nimport numpy\n"
-               "from salvage.formats import stub\nfrom .stub import MAGIC\n"
+               "from salvagekit.formats import stub\nfrom .stub import MAGIC\n"
                "x = hash('a')\ny = eval('1')\nimport datetime\nz = datetime.datetime.now()\n"
                "def f():\n    if True:\n        open('a')\n"
                "if __name__ == '__main__':\n    pass\nelse:\n    id(1)\n")
         problems, _ = self.problems(src)
         self.assertEqual(problems, [
             "forbidden import os.path", "forbidden import urllib",
-            "import numpy not allowed (only the standard library, salvage.core and private "
-            "helpers salvage.formats._*)",
-            "import salvage.formats.stub not allowed (another decoder's module; shared code "
-            "goes in a private helper salvage.formats._name)",
-            "import salvage.formats.stub not allowed (another decoder's module; shared code "
-            "goes in a private helper salvage.formats._name)",
+            "import numpy not allowed (only the standard library, salvagekit.core and private "
+            "helpers salvagekit.formats._*)",
+            "import salvagekit.formats.stub not allowed (another decoder's module; shared code "
+            "goes in a private helper salvagekit.formats._name)",
+            "import salvagekit.formats.stub not allowed (another decoder's module; shared code "
+            "goes in a private helper salvagekit.formats._name)",
             "forbidden call hash()", "forbidden call eval()",
             "forbidden attribute .now (the current time makes output non-deterministic)",
             "forbidden call open()", "forbidden call id()"])
 
     def test_real_stub_is_clean(self):
-        self.assertEqual(cf.static_problems("salvage.formats.stub", "salvage.formats"), [])
+        self.assertEqual(cf.static_problems("salvagekit.formats.stub", "salvagekit.formats"), [])
 
 
 if __name__ == "__main__":

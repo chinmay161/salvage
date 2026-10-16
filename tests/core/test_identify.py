@@ -2,10 +2,10 @@ import os
 import tempfile
 import unittest
 
-from salvage.core import fallback, identify, isolate
-from salvage.core.model import DecodeResult, Field, Record, Status
-from salvage.core.plugin import Decoder
-from salvage.formats.stub import MAGIC
+from salvagekit.core import fallback, identify, isolate
+from salvagekit.core.model import DecodeResult, Field, Record, Status
+from salvagekit.core.plugin import Decoder
+from salvagekit.formats.stub import MAGIC
 
 PKG = "tests.fixtures.pipeline_formats"
 
@@ -121,7 +121,7 @@ class FallbackTests(unittest.TestCase):
     def test_unknown_result(self):
         ranked = [identify.Ranked(n, 0.1) for n in "ABCD"]
         res = fallback.unknown(b"xyz", ranked)
-        self.assertEqual((res.format, res.confidence, res.records), ("unknown", 0.0, []))
+        self.assertEqual((res.format, res.confidence, res.records), ("UNKNOWN", 0.0, []))
         self.assertEqual(res.meta["top_candidates"],
                          [{"format": n, "score": 0.1} for n in "ABC"])
         self.assertEqual(res.validate(3), [])
@@ -144,7 +144,8 @@ class IsolateTests(unittest.TestCase):
                     self.assertIsNone(reason)
                     self.assertEqual(info["candidates"], ["STUB"])
                     self.assertEqual(payload, expected)
-                    self.assertEqual(payload["entry"]["status"], "decoded")
+                    # count 0 matches the 0 bytes left: nothing unverified
+                    self.assertEqual(payload["entry"]["status"], "ok")
 
     def test_read_error_is_data(self):
         # A folder cannot be read as a file (Windows: permission denied;

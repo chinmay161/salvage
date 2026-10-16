@@ -1,5 +1,10 @@
 # Schema notes (Phase 0)
 
+> **Superseded in Phase 7.** The organizers' contract arrived as
+> kit/OUTPUT-CONTRACT.md plus reference answers in kit/expected_outputs/.
+> The output now follows it; see docs/output-format.md. This file is kept
+> as the Phase 0 record only.
+
 ## BLOCKERS
 
 - **schema/ is empty.** No schema file existed when Phase 0 ran (the folder

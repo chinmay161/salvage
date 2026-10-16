@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from salvage.core import caps, isolate, limits, report, validate
+from salvagekit.core import caps, isolate, limits, report, validate
 from tests.fixtures.limit_formats.many import ManyDecoder
 
 PKG = "tests.fixtures.limit_formats"
@@ -88,21 +88,22 @@ class PipelineCapTests(unittest.TestCase):
             out, entry = payload["output"], payload["entry"]
             self.assertEqual(entry["status"], "partial")
             self.assertEqual(out["status"], "partial")
-            self.assertIn("output capped at 7 records", out["warnings"])
-            self.assertIn("output capped at 2 members", out["warnings"])
+            self.assertIn("output capped at 7 records", entry["warnings"])
+            self.assertIn("output capped at 2 members", entry["warnings"])
             self.assertEqual(sum(entry["records_by_status"].values()), 7)
             self.assertEqual(entry["members"], 2)
-            out["source"]["sha256"] = None
+            self.assertEqual(len(out["records"]), 5)   # top level only; members not emitted
             self.assertEqual(validate.errors("output", out), [])
 
-    def test_uncapped_file_is_decoded(self):
+    def test_uncapped_file_is_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "x.many")
             with open(path, "wb") as fh:
                 fh.write(b"T-MANY")
             payload = isolate.process_file(path, "x.many", PKG)
-            self.assertEqual(payload["entry"]["status"], "decoded")
-            self.assertEqual(payload["output"]["warnings"], [])
+            self.assertEqual(payload["entry"]["status"], "ok")
+            self.assertEqual(payload["output"]["status"], "ok")
+            self.assertEqual(payload["entry"]["warnings"], [])
 
 
 if __name__ == "__main__":

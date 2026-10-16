@@ -2,7 +2,7 @@
 
 import time
 
-from salvage.core.plugin import Decoder
+from salvagekit.core.plugin import Decoder
 
 
 class SlowProbeDecoder(Decoder):

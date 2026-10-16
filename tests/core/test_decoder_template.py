@@ -9,9 +9,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from salvage.core import isolate, report, validate
-from salvage.core.model import Status
-from salvage.core.reader import SafeReader
+from salvagekit.core import isolate, report, validate
+from salvagekit.core.model import Status
+from salvagekit.core.reader import SafeReader
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "docs" / "decoder-template.py"
@@ -44,7 +44,8 @@ def run(data: bytes, name: str = "f.exmp") -> dict:
     payload = isolate.process_data(name, data, [T.ExampleDecoder()])
     rep = report.new_report()
     payload["entry"]["output"] = name + ".json"
-    rep["files"].append(payload["entry"])
+    rep["files"].append(report.file_row(payload["output"]))
+    rep["diagnostics"]["files"].append(payload["entry"])
     report.summarize(rep)
     payload["report"] = rep
     return payload
@@ -56,19 +57,22 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(validate.errors("report", payload["report"]), [])
 
     def test_not_discoverable_or_shipped(self):
-        self.assertFalse((ROOT / "salvage" / "formats" / "decoder-template.py").exists())
+        self.assertFalse((ROOT / "salvagekit" / "formats" / "decoder-template.py").exists())
         self.assertEqual(T.ExampleDecoder.name, "EXAMPLE")
 
     def test_clean_file(self):
         p = run(CLEAN)
         self.assertValid(p)
         out, entry = p["output"], p["entry"]
-        self.assertEqual((out["status"], out["format"], out["variant"], out["confidence"]),
-                         ("decoded", "EXAMPLE", "EXAMPLE v2", 1.0))
-        self.assertEqual([r["fields"][0]["value"] for r in out["records"][1:]],
-                         ["alpha", "beta", "γάμμα"])
-        self.assertTrue(all(r["status"] == "verified" for r in out["records"][1:]))
-        self.assertIn("CRC-16/XMODEM", out["records"][1]["fields"][0]["evidence"])
+        self.assertEqual((out["status"], out["format"]), ("ok", "EXAMPLE"))
+        self.assertEqual((entry["variant"], entry["confidence"]), ("EXAMPLE v2", 1.0))
+        self.assertEqual(out["metadata"], {"declared_count": 3, "version": 2})
+        self.assertEqual(out["records"], [{"index": 0, "text": "alpha"},
+                                          {"index": 1, "text": "beta"},
+                                          {"index": 2, "text": "γάμμα"}])
+        result = T.ExampleDecoder().decode(SafeReader(CLEAN))
+        self.assertTrue(all(r.status == Status.VERIFIED for r in result.records))
+        self.assertIn("CRC-16/XMODEM", result.records[0].fields[1].evidence)
         cov = entry["coverage"]
         self.assertEqual((cov["accounted_pct"], cov["unexplained"], cov["bytes_padding"]),
                          (100.0, [], 8))
@@ -87,30 +91,38 @@ class TemplateTests(unittest.TestCase):
         data = example(1, 5, good, bad, junk, record("gamma"), tail)
         p = run(data)
         self.assertValid(p)
-        out = p["output"]
-        self.assertEqual((out["status"], out["variant"]), ("partial", "EXAMPLE v1"))
-        texts = [(r["fields"][0]["value"], r["status"]) for r in out["records"][1:]]
-        self.assertEqual(texts, [("alpha", "verified"), ("beta", "unverified"),
-                                 ("gamma", "verified")])
+        out, entry = p["output"], p["entry"]
+        self.assertEqual((out["status"], entry["variant"]), ("partial", "EXAMPLE v1"))
+        self.assertEqual(out["records"], [
+            {"index": 0, "text": "alpha"},
+            {"index": 1, "text": "beta", "verified": False, "issues": ["crc_mismatch"]},
+            {"index": 2, "text": "gamma"}])
         o_bad = 16 + len(good)
         o_junk = o_bad + len(bad)
         o_tail = o_junk + len(junk) + len(record("gamma"))
-        self.assertEqual([(d["kind"], d["start"], d["end"]) for d in out["damage"]], [
-            ("checksum", o_bad, o_junk),
-            ("unparsed", o_junk, o_junk + len(junk)),
-            ("truncated", o_tail, len(data)),
+        self.assertEqual([(d["kind"], d["offset"], d["lossy"]) for d in out["damage"]], [
+            ("crc_mismatch", o_bad, False),
+            ("unparsed_bytes", o_junk, True),
+            ("truncated", o_tail, True),
         ])
-        count = out["records"][0]["fields"][2]
-        self.assertEqual((count["name"], count["status"]), ("count", "unverified"))
-        self.assertEqual(p["entry"]["coverage"]["unexplained"],
+        self.assertEqual([(d["start"], d["end"]) for d in entry["damage"]],
+                         [(o_bad, o_junk), (o_junk, o_junk + len(junk)), (o_tail, len(data))])
+        self.assertEqual(entry["coverage"]["unexplained"],
                          [[o_junk, o_junk + len(junk)], [o_tail, len(data)]])
+
+    def test_count_mismatch_only_when_nothing_else_explains_it(self):
+        p = run(example(2, 3, record("a"), record("b")))   # ends cleanly after 2 of 3
+        self.assertValid(p)
+        self.assertEqual(p["output"]["damage"], [{
+            "kind": "count_mismatch", "offset": 6, "detail": "header says 3, 2 records found",
+            "lossy": True}])
+        self.assertEqual(p["output"]["status"], "partial")
 
     def test_nonzero_reserved_is_not_padding(self):
         p = run(example(2, 1, record("a"), padding=b"\x01" + bytes(7)))
         self.assertValid(p)
         self.assertEqual(p["entry"]["coverage"]["bytes_padding"], 0)
-        names = [f["name"] for f in p["output"]["records"][0]["fields"]]
-        self.assertIn("reserved", names)
+        self.assertEqual(p["output"]["metadata"]["reserved"], "01" + "00" * 7)
 
     def test_truncated_header_and_garbage(self):
         for data in (T.MAGIC, T.MAGIC + b"\x02", T.MAGIC + b"\x02\x00\x01\x00\x00",
@@ -118,7 +130,7 @@ class TemplateTests(unittest.TestCase):
             with self.subTest(data=data[:20]):
                 p = run(data)
                 self.assertValid(p)
-                self.assertIn(p["output"]["status"], ("partial", "decoded"))
+                self.assertIn(p["output"]["status"], ("partial", "ok"))
 
     def test_probe(self):
         dec = T.ExampleDecoder()

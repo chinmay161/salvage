@@ -2,68 +2,91 @@
 
 Salvage reads a folder of files in legacy binary formats, works out each
 file's format from its bytes, and decodes what it can into one JSON per file
-plus a `report.json`. Damaged files are recovered as far as possible, the
-damage is reported, and nothing is guessed. It runs fully offline.
+plus a `report.json`, following the organizers' output contract
+([kit/OUTPUT-CONTRACT.md](kit/OUTPUT-CONTRACT.md)). Damaged files are
+recovered as far as possible, the damage is reported, and nothing is
+guessed. It runs fully offline, with no network and no AI calls.
 
 ## Quick start
 
-Build (one command; needs only the base image, no network):
+From the repository root (Linux, macOS, WSL; needs **Python 3.10 or
+newer**, standard library only, nothing to install):
+
+```sh
+./salvage <input_dir> <output_dir>
+./salvage kit/samples out
+```
+
+On Windows (development): `salvage.cmd <input_dir> <output_dir>` (uses
+`py -3` or `python`).
+
+`./salvage` always exits with status 0, even for a missing input folder or
+an old Python; problems are listed in `report.json` and on stderr.
+
+## Docker
+
+Build (the single build command; needs only the pinned base image, no
+network):
 
 ```sh
 docker build -t salvage .
 ```
 
-Run on the files in `./in`, writing to `./out`. Linux / macOS:
+Run on the files in `./in`, writing to `./out`. Any of these forms works:
 
 ```sh
+docker run --rm --network none -v "$PWD/in:/in:ro" -v "$PWD/out:/out" salvage ./salvage /in /out
 docker run --rm --network none -v "$PWD/in:/in:ro" -v "$PWD/out:/out" salvage /salvage /in /out
+docker run --rm --network none -v "$PWD/in:/in:ro" -v "$PWD/out:/out" salvage /in /out
 ```
 
-Windows PowerShell:
-
-```powershell
-docker run --rm --network none -v "${PWD}\in:/in:ro" -v "${PWD}\out:/out" salvage /salvage /in /out
-```
-
-Salvage always exits with status 0, even for a missing input folder;
-problems are listed in `report.json` and on stderr. With no arguments the
-image prints its help. On Linux, output files are owned by root unless you
-create `out` first and add `--user "$(id -u):$(id -g)"`.
+Windows PowerShell: use `-v "${PWD}\in:/in:ro" -v "${PWD}\out:/out"`.
+With no arguments the image prints its help. On Linux, output files are
+owned by root unless you create `out` first and add
+`--user "$(id -u):$(id -g)"`.
 
 ## What you get
 
-- **One JSON per input file**, at `<input path>.json` with subfolders
-  mirrored (`sub/x.dat` → `sub/x.dat.json`): the format, the decoded records
-  and fields, the damage, warnings and errors.
-- **`report.json`** in the output root: every file with its status, format,
-  confidence, counts and coverage, plus a summary and run-level errors.
+- **One JSON per file** directly in the input folder, named
+  `<input file name>.json` (`s01.dat` → `s01.dat.json`). Subfolders are
+  skipped, not entered. Each holds exactly the contract's keys:
+  `source_file`, `format`, `status`, `metadata`, `records`, `damage`.
+- **`report.json`**: `tool_version`, one row per file (`file`, `format`,
+  `status`, `records`, `damage` counts), `totals` for every status, and our
+  `diagnostics` (identification scores, attempts, coverage, damage byte
+  ranges, warnings, errors, skipped folders).
 - **Exactly one status per file:**
 
   | status | meaning |
   |--------|---------|
-  | `decoded` | decoded; no damage and nothing lost |
-  | `partial` | decoded, but some bytes are damaged or some values are lost |
-  | `unknown` | no decoder recognised the file; only facts about its bytes (size, SHA-256, entropy) |
-  | `failed` | could not be decoded: decoder error, timeout, crash, unreadable or too large |
+  | `ok` | decoded; nothing damaged, lost or unverified |
+  | `partial` | decoded, but some data is damaged, lost or unverified |
+  | `unsupported` | recognised but cannot be decoded (e.g. password-protected) |
+  | `unrecognized` | no decoder recognised the file (format `UNKNOWN`) |
+  | `failed` | recognised (or not) but could not be decoded: decoder error, timeout, crash, unreadable or too large |
 
-- **A trust level on every record and field:** `verified`, `consistent`,
-  `unverified` or `lost`, with an `evidence` string saying why.
-- **Coverage:** how many of each file's bytes the decoder explained, how
-  many were padding, and which ranges nobody explained.
+- **Records** are flat objects with the contract's field names per format.
+  A record that was recovered but could not be verified carries
+  `"verified": false`, and `"issues": [kinds]` names the damage that hit it.
+- **Damage** uses the contract's kinds (`truncated`, `crc_mismatch`,
+  `checksum_mismatch`, `bad_length`, `unparsed_bytes`, `count_mismatch`,
+  `invalid_value`, `oob_pointer`, `index_missing`, `header_checksum`,
+  `encrypted`, `unknown_record`), each with an offset and `lossy`.
 
 The same input bytes always give byte-identical output, on any OS and with
-any `--jobs`. The full shape is in [docs/output-format.md](docs/output-format.md).
+any `--jobs`. The full shape, and every decision the contract left open, is
+in [docs/output-format.md](docs/output-format.md).
 
 ## Damaged files and our honesty policy
 
-- `verified` needs real evidence: a checksum match, an exact round trip
-  (re-encoding gives the same bytes) or an exact magic match. "Looks
-  plausible" is `unverified`.
-- Data that should exist but cannot be recovered is reported as `lost` with
-  the value `null`. We never fill in zeros, defaults or guesses.
-- Damaged byte ranges are listed (`truncated`, `checksum`, `bounds`,
-  `unparsed`, `other`), and everything readable before and after the damage
-  is kept.
+- Inside Salvage every value carries a trust level: `verified` needs real
+  evidence (a checksum match, an exact round trip, an exact magic match);
+  "looks plausible" is not verified. Anything unverified or lost is marked
+  `"verified": false` in the output.
+- Data that should exist but cannot be recovered is `null`. We never fill
+  in zeros, defaults or guesses.
+- Damage is listed with its kind and offset, and everything readable before
+  and after it is kept.
 - One bad file never stops the run or changes another file's output: each
   file is decoded in its own worker process with a time limit.
 
@@ -73,7 +96,9 @@ any `--jobs`. The full shape is in [docs/output-format.md](docs/output-format.md
 No format decoders merged yet.
 <!-- formats:end -->
 
-This table is generated by `python tools/task.py docs`.
+This table is generated by `python tools/task.py docs`. The record fields
+graded per format are in
+[salvagekit/core/contract_shapes.py](salvagekit/core/contract_shapes.py).
 
 ## Specs and research log
 
@@ -116,11 +141,12 @@ docker build --network none -t salvage .
 
 ## Development
 
-You need Python 3.12 and only the standard library.
+Python 3.10 or newer (we develop on 3.12), standard library only.
 
 ```sh
-python tools/task.py test            # all unit, golden and quick conformance tests
+python tools/task.py test            # all unit, golden, samples and quick conformance tests
 python tools/task.py conform         # decoder conformance suite (docs/conformance.md)
+python tools/task.py calibrate       # compare our outputs with kit/expected_outputs/
 python tools/task.py docs            # regenerate FORMAT-SPEC.md, FIELD-LOG.md, the formats table
 python tools/task.py golden [FORMAT] # golden tests (tests/<format>/cases/)
 python tools/task.py docker-smoke    # host vs container run: outputs must be byte-identical
@@ -135,16 +161,18 @@ Project rules: [CLAUDE.md](CLAUDE.md).
 ## Project layout and team
 
 ```text
-salvage/core/       pipeline, isolation, SafeReader, validation (core)
-salvage/formats/    one decoder per format, auto-discovered
-salvage/cli.py      the command line
-tests/              unit tests, golden cases (tests/<format>/cases/), conformance
-docs/spec/, docs/log/   per-format spec and research log (assembled by `docs`)
-tools/              task runner, docs assembler
-docker/, Dockerfile the offline image
+salvage, salvage.cmd     the entry points (./salvage IN OUT)
+salvagekit/core/         pipeline, isolation, SafeReader, output contract, validation
+salvagekit/formats/      one decoder per format, auto-discovered
+salvagekit/cli.py        the command line
+kit/                     the organizers' kit: contract, hints, samples, expected outputs
+tests/                   unit tests, golden cases (tests/<format>/cases/), conformance
+docs/spec/, docs/log/    per-format spec and research log (assembled by `docs`)
+tools/                   task runner, docs assembler, calibrate
+docker/, Dockerfile      the offline image
 ```
 
 Four people: the lead owns the core, tooling, Docker and docs assembly;
-each teammate owns their formats (`salvage/formats/<format>.py`,
+each teammate owns their formats (`salvagekit/formats/<format>.py`,
 `tests/<format>/`, `docs/spec/<format>.md`, `docs/log/<format>.md`). See
 the Ownership section of [CLAUDE.md](CLAUDE.md).

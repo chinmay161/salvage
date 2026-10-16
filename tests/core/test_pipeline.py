@@ -7,9 +7,9 @@ import struct
 import tempfile
 import unittest
 
-from salvage.core import pipeline, validate
+from salvagekit.core import pipeline, report, validate
 from tests.pipeline_helpers import run_checked
-from salvage.formats.stub import MAGIC
+from salvagekit.formats.stub import MAGIC
 
 PKG = "tests.fixtures.pipeline_formats"
 TIMEOUT = 2
@@ -31,14 +31,15 @@ INPUTS = {
     "big.t": b"T-BIG payload",
 }
 
-EXPECTED_OUTPUT = {rel: rel + ".json" for rel in INPUTS}
+# Non-recursive (C1): "sub/" is skipped, so "sub/nested.stub" gets no output.
+EXPECTED_OUTPUT = {rel: rel + ".json" for rel in INPUTS if "/" not in rel}
 EXPECTED_OUTPUT["report"] = "report~2.json"
 
 EXPECTED_STATUS = {
-    "clean.stub": "decoded", "truncated.stub": "partial", "empty.bin": "unknown",
-    "random.bin": "unknown", "sub/nested.stub": "decoded", "report": "decoded",
+    "clean.stub": "ok", "truncated.stub": "partial", "empty.bin": "unrecognized",
+    "random.bin": "unrecognized", "report": "ok",
     "hang.t": "failed", "raise.t": "failed", "crash.t": "failed", "bad.t": "failed",
-    "big.t": "decoded",
+    "big.t": "partial",   # 40,000 UNVERIFIED records
 }
 
 
@@ -75,7 +76,8 @@ class PipelineTests(unittest.TestCase):
         run_checked(cls.inp, cls.out2, decoder_package=PKG, timeout=TIMEOUT, jobs=4)
         cls.tree1 = _read_tree(cls.out1)
         cls.tree2 = _read_tree(cls.out2)
-        cls.entries = {e["input"]: e for e in cls.report["files"]}
+        cls.entries = {e["input"]: e for e in cls.report["diagnostics"]["files"]}
+        cls.rows = {r["file"]: r for r in cls.report["files"]}
 
     @classmethod
     def tearDownClass(cls):
@@ -84,18 +86,55 @@ class PipelineTests(unittest.TestCase):
     def output(self, rel):
         return json.loads(self.tree1[EXPECTED_OUTPUT[rel]].decode("utf-8"))
 
-    def test_one_output_per_input(self):
+    def test_one_output_per_top_level_input(self):
         expected = set(EXPECTED_OUTPUT.values()) | {"report.json"}
         self.assertEqual(set(self.tree1), expected)
         for rel, out_rel in EXPECTED_OUTPUT.items():
             self.assertEqual(self.entries[rel]["output"], out_rel)
-            self.assertEqual(self.output(rel)["source"]["path"], rel)
+            self.assertEqual(self.output(rel)["source_file"], rel)
+
+    def test_subfolder_skipped_not_entered(self):
+        self.assertNotIn("sub/nested.stub", self.entries)
+        self.assertEqual(self.report["diagnostics"]["skipped"],
+                         [{"input": "sub",
+                           "reason": "directory (not entered: the walk is non-recursive)"}])
+        self.assertEqual(self.report["diagnostics"]["summary"]["skipped"], 1)
 
     def test_statuses(self):
         got = {rel: e["status"] for rel, e in self.entries.items()}
         self.assertEqual(got, EXPECTED_STATUS)
         for rel, status in EXPECTED_STATUS.items():
             self.assertEqual(self.output(rel)["status"], status, rel)
+            self.assertEqual(self.rows[rel]["status"], status, rel)
+
+    def test_output_keys_exactly_the_contract(self):
+        for rel in EXPECTED_OUTPUT:
+            self.assertEqual(list(self.output(rel)), ["source_file", "format", "status",
+                                                      "metadata", "records", "damage"], rel)
+
+    def test_contract_records_and_damage(self):
+        clean = self.output("clean.stub")
+        self.assertEqual(clean["records"], [
+            {"magic": MAGIC.hex(), "count": 3}, {"value": 10}, {"value": 20}, {"value": 30}])
+        self.assertEqual(clean["damage"], [])
+        trunc = self.output("truncated.stub")
+        self.assertEqual(trunc["records"][0]["issues"], ["truncated"])
+        self.assertEqual(trunc["records"][1], {"value": 1, "verified": False})
+        self.assertEqual(trunc["damage"], [{"kind": "truncated", "offset": 23,
+                                            "detail": "expected 5 values, file ends after 2",
+                                            "lossy": True}])
+        for rel in ("empty.bin", "random.bin", "hang.t", "bad.t"):
+            out = self.output(rel)
+            self.assertEqual((out["metadata"], out["records"], out["damage"]), ({}, [], []), rel)
+
+    def test_report_rows_match_outputs(self):
+        self.assertEqual(list(self.report), ["tool_version", "files", "totals", "diagnostics"])
+        self.assertEqual([r["file"] for r in self.report["files"]], sorted(EXPECTED_OUTPUT))
+        for rel in EXPECTED_OUTPUT:
+            out, row = self.output(rel), self.rows[rel]
+            self.assertEqual(row, {"file": rel, "format": out["format"],
+                                   "status": out["status"], "records": len(out["records"]),
+                                   "damage": len(out["damage"])})
 
     def test_hang_times_out(self):
         self.assertEqual(self.entries["hang.t"]["errors"],
@@ -113,15 +152,15 @@ class PipelineTests(unittest.TestCase):
                 entry, out = self.entries[rel], self.output(rel)
                 self.assertEqual((entry["format"], entry["status"], entry["confidence"]),
                                  (fmt, "failed", 1.0))
-                self.assertEqual((out["format"], out["status"], out["confidence"]),
-                                 (fmt, "failed", 1.0))
+                self.assertEqual((out["format"], out["status"]), (fmt, "failed"))
                 self.assertEqual(entry["candidates"][0], {"format": fmt, "score": 1.0})
                 self.assertEqual(len(entry["candidates"]), 6)  # every fixture decoder
-        self.assertEqual(self.report["summary"]["by_format"]["T-HANG"], 1)
+        self.assertEqual(self.report["diagnostics"]["summary"]["by_format"]["T-HANG"], 1)
 
-    def test_unknown_still_means_no_candidate(self):
+    def test_unrecognized_means_no_candidate(self):
         for rel in ("empty.bin", "random.bin"):
-            self.assertEqual(self.entries[rel]["format"], "unknown")
+            self.assertEqual(self.entries[rel]["format"], "UNKNOWN")
+            self.assertEqual(self.output(rel)["format"], "UNKNOWN")
             self.assertEqual(self.entries[rel]["confidence"], 0.0)
 
     def test_raise_and_badres_attempts_recorded(self):
@@ -139,13 +178,15 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(out["records"]), 40_000)
         self.assertEqual(self.entries["big.t"]["records_by_status"]["unverified"], 40_000)
 
-    def test_unknown_fallback_meta(self):
-        meta = self.output("random.bin")["meta"]
-        self.assertEqual(meta["size"], 64 * 1024)
-        self.assertGreater(meta["entropy"], 7.9)
-        self.assertEqual(len(meta["top_candidates"]), 3)
-        self.assertIs(meta["entropy_sampled"], False)
-        self.assertEqual(self.output("empty.bin")["meta"]["entropy"], 0.0)
+    def test_unrecognized_byte_facts_go_to_diagnostics(self):
+        facts = self.entries["random.bin"]["bytes"]
+        self.assertEqual(facts["size"], 64 * 1024)
+        self.assertGreater(facts["entropy"], 7.9)
+        self.assertEqual(len(facts["top_candidates"]), 3)
+        self.assertIs(facts["entropy_sampled"], False)
+        self.assertEqual(self.entries["empty.bin"]["bytes"]["entropy"], 0.0)
+        self.assertEqual(self.output("random.bin")["metadata"], {})
+        self.assertIsNone(self.entries["clean.stub"]["bytes"])
 
     def test_clean_output_unaffected_by_hostile_files(self):
         inp = os.path.join(self.tmp, "clean-in")
@@ -155,13 +196,15 @@ class PipelineTests(unittest.TestCase):
         with open(os.path.join(out, "clean.stub.json"), "rb") as fh:
             self.assertEqual(fh.read(), self.tree1["clean.stub.json"])
 
-    def test_summary_matches_files(self):
-        s = self.report["summary"]
-        self.assertEqual(s["files"], len(INPUTS))
-        for status in ("decoded", "partial", "unknown", "failed"):
-            self.assertEqual(s[status], list(EXPECTED_STATUS.values()).count(status), status)
-        self.assertEqual(s["skipped"], 0)
-        self.assertEqual(sum(s["by_format"].values()), len(INPUTS))
+    def test_totals_match_files(self):
+        totals = self.report["totals"]
+        self.assertEqual(list(totals), list(report.FILE_STATUSES))   # zeros included
+        for status in report.FILE_STATUSES:
+            self.assertEqual(totals[status], list(EXPECTED_STATUS.values()).count(status), status)
+        self.assertEqual(totals["unsupported"], 0)
+        s = self.report["diagnostics"]["summary"]
+        self.assertEqual(s["files"], len(EXPECTED_STATUS))
+        self.assertEqual(sum(s["by_format"].values()), len(EXPECTED_STATUS))
         on_disk = json.loads(self.tree1["report.json"].decode("utf-8"))
         self.assertEqual(on_disk, self.report)
 
@@ -171,7 +214,6 @@ class PipelineTests(unittest.TestCase):
                 kind = "report" if rel == "report.json" else "output"
                 doc = json.loads(data.decode("utf-8"))
                 self.assertEqual(validate.errors(kind, doc), [])
-                self.assertEqual(doc["schema_version"], "provisional-1")
 
     def test_identification_fields(self):
         # Part A: variant null (STUB reports its own name), confidence from the
@@ -179,8 +221,6 @@ class PipelineTests(unittest.TestCase):
         for rel, e in self.entries.items():
             with self.subTest(rel=rel):
                 self.assertIsNone(e["variant"])
-                self.assertIsNone(self.output(rel)["variant"])
-                self.assertEqual(e["confidence"], self.output(rel)["confidence"])
         self.assertEqual((self.entries["clean.stub"]["confidence"],
                           self.entries["clean.stub"]["probe_score"]), (1.0, 1.0))
         self.assertEqual(self.entries["random.bin"]["probe_score"], 0.0)
@@ -208,10 +248,9 @@ class PipelineTests(unittest.TestCase):
         for rel, data in self.tree1.items():
             self.assertNotIn(b"\r", data, rel)
             self.assertTrue(data.endswith(b"\n"), rel)
-        for e in self.report["files"]:
+        for e in self.entries.values():
             self.assertNotIn("\\", e["input"])
             self.assertNotIn("\\", e["output"])
-        self.assertEqual(self.entries["sub/nested.stub"]["output"], "sub/nested.stub.json")
 
     def test_no_absolute_paths(self):
         needles = {os.path.basename(self.tmp).encode()}
@@ -231,9 +270,10 @@ class SlowProbeTests(unittest.TestCase):
             _make_tree(inp, {"x.bin": b"anything"})
             rep = run_checked(inp, out, decoder_package="tests.fixtures.slowprobe_formats", jobs=1,
                                timeout=TIMEOUT)
-            entry = rep["files"][0]
+            entry = rep["diagnostics"]["files"][0]
             self.assertEqual((entry["format"], entry["status"], entry["confidence"]),
-                             ("unknown", "failed", 0.0))
+                             ("UNKNOWN", "failed", 0.0))
+            self.assertEqual(rep["files"][0]["format"], "UNKNOWN")
             self.assertEqual(entry["errors"], [f"timeout after {TIMEOUT}s (during probe)"])
             self.assertEqual(entry["candidates"], [])
 
@@ -243,8 +283,9 @@ class RunErrorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out")
             rep = run_checked(os.path.join(tmp, "nope"), out, decoder_package=PKG, jobs=1)
-            self.assertEqual(rep["summary"]["files"], 0)
-            self.assertEqual(len(rep["errors"]), 1)
+            self.assertEqual(rep["files"], [])
+            self.assertEqual(rep["totals"], dict.fromkeys(report.FILE_STATUSES, 0))
+            self.assertEqual(len(rep["diagnostics"]["errors"]), 1)
             with open(os.path.join(out, "report.json"), encoding="utf-8") as fh:
                 self.assertEqual(json.load(fh), rep)
 
@@ -254,9 +295,19 @@ class RunErrorTests(unittest.TestCase):
             rep = run_checked(tmp, tmp, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
             with open(os.path.join(tmp, "a.json"), "rb") as fh:
                 self.assertEqual(fh.read(), b"precious")
-            entry = next(e for e in rep["files"] if e["input"] == "a")
+            entry = next(e for e in rep["diagnostics"]["files"] if e["input"] == "a")
             self.assertIsNone(entry["output"])
             self.assertTrue(entry["errors"])
+
+    def test_report_never_overwrites_an_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _make_tree(tmp, {"report.json": b"precious", "a": CLEAN})
+            rep = run_checked(tmp, tmp, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
+            with open(os.path.join(tmp, "report.json"), "rb") as fh:
+                self.assertEqual(fh.read(), b"precious")
+            self.assertIn("cannot write report: refusing to overwrite an input file",
+                          rep["diagnostics"]["errors"])
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "report.json.json")))
 
     def test_too_large_is_hashed_but_never_decoded(self):
         from unittest import mock
@@ -270,12 +321,14 @@ class RunErrorTests(unittest.TestCase):
                 rep = run_checked(inp, out, decoder_package=PKG, jobs=1)
             spawn.assert_not_called()  # never decoded
             sha.assert_called_once()   # but hashed (streamed)
-            entry = rep["files"][0]
+            entry = rep["diagnostics"]["files"][0]
             self.assertEqual(entry["status"], "failed")
             self.assertIn("too large", entry["errors"][0])
             self.assertEqual(entry["sha256"], hashlib.sha256(CLEAN).hexdigest())
             with open(os.path.join(out, "big.stub.json"), encoding="utf-8") as fh:
-                self.assertEqual(json.load(fh)["source"]["sha256"], entry["sha256"])
+                self.assertEqual(json.load(fh), {
+                    "source_file": "big.stub", "format": "UNKNOWN", "status": "failed",
+                    "metadata": {}, "records": [], "damage": []})
 
     def test_sha256_file_streams_in_1_mib_chunks(self):
         from unittest import mock
@@ -313,18 +366,18 @@ class OverwriteGuardTests(unittest.TestCase):
             self.assertFalse(pipeline.folders_overlap(b, a))
             self.assertFalse(pipeline.folders_overlap(os.path.join(tmp, "missing"), a))
 
-    def test_input_inside_output_never_overwrites_an_input(self):
+    def test_input_inside_output_is_guarded(self):
         with tempfile.TemporaryDirectory() as tmp:
-            # Output root <tmp>, input <tmp>/in: input "in/a" has the output
-            # <tmp>/in/a.json, which is the input file "a.json".
+            # Output root <tmp>, input <tmp>/in: the folders overlap, so every
+            # target is checked; the nested input folder itself is skipped.
             inp = os.path.join(tmp, "in")
-            _make_tree(inp, {"in/a": CLEAN, "a.json": b"precious"})
+            _make_tree(inp, {"a": CLEAN, "a.json": b"precious", "in/b": CLEAN})
             rep = run_checked(inp, tmp, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
             with open(os.path.join(inp, "a.json"), "rb") as fh:
                 self.assertEqual(fh.read(), b"precious")
-            entry = next(e for e in rep["files"] if e["input"] == "in/a")
-            self.assertIsNone(entry["output"])
-            self.assertTrue(any("overwrite an input" in e for e in entry["errors"]))
+            self.assertEqual([r["file"] for r in rep["files"]], ["a", "a.json"])
+            self.assertEqual(rep["diagnostics"]["skipped"][0]["input"], "in")
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "a.json")))
 
     def test_disjoint_folders_skip_the_per_file_check(self):
         from unittest import mock
@@ -334,8 +387,8 @@ class OverwriteGuardTests(unittest.TestCase):
             with mock.patch.object(pipeline, "_key", wraps=pipeline._key) as key:
                 rep = run_checked(inp, out, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
             self.assertEqual(key.call_count, 2)   # the two folders, resolved once
-            self.assertEqual([e["status"] for e in rep["files"]], ["decoded"] * 5)
-            self.assertTrue(all(e["output"] for e in rep["files"]))
+            self.assertEqual([r["status"] for r in rep["files"]], ["ok"] * 5)
+            self.assertTrue(all(e["output"] for e in rep["diagnostics"]["files"]))
 
 
 if __name__ == "__main__":

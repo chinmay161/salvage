@@ -2,7 +2,7 @@
 
     python tools/task.py test                 run the whole unittest suite
     python tools/task.py api                  print the public API (tools/api_dump.py)
-    python tools/task.py run IN OUT           python -m salvage.cli IN OUT
+    python tools/task.py run IN OUT           python -m salvagekit.cli IN OUT
     python tools/task.py build                docker build -t salvage:dev .
     python tools/task.py build-offline        same, with --network none
     python tools/task.py docker-run IN OUT    run the image on IN, writing to OUT
@@ -14,6 +14,7 @@
     python tools/task.py bench [--docker]     throughput, --jobs 1 vs --jobs auto
     python tools/task.py docs [--check] [--strict]  FORMAT-SPEC.md, FIELD-LOG.md, README table
     python tools/task.py check-outputs IN OUT one valid JSON per input + report.json?
+    python tools/task.py calibrate [FILE]     compare with kit/expected_outputs/
     python tools/task.py lint-docker          Dockerfile: no network in RUN, FROM pinned
     python tools/task.py save-base|load-base  base image <-> dist/base-image.tar
     python tools/task.py precheck             release checklist on a clean clone of HEAD
@@ -45,7 +46,7 @@ USAGE = """usage: python tools/task.py <command>
 
 commands:
   test                  run all tests
-  api                   print the public API of salvage.core and salvage.formats
+  api                   print the public API of salvagekit.core and salvagekit.formats
   run IN OUT            run the salvage CLI on IN, writing to OUT
   build                 docker build -t salvage:dev .
   build-offline         docker build --network none -t salvage:dev .
@@ -59,7 +60,7 @@ commands:
   conform [NAME] [--verbose] [--quick]
                         check every decoder (or NAME) against the contract
                         (docs/conformance.md); exit 1 if any FAILs.
-                        --quick: the merge gate's smaller run (no samples/)
+                        --quick: the merge gate's smaller run (no kit/samples/)
   bench [--docker]      time the CLI on 525 generated files with --jobs 1
                         and --jobs auto (--docker: inside the image)
   docs [--check] [--strict]
@@ -68,15 +69,21 @@ commands:
                         nothing and exits 1 if a file is stale; --strict
                         also fails on warnings
   check-outputs IN OUT  check a finished run: report.json present, one JSON
-                        per input file, every file valid against the active
-                        schema
+                        per top-level input file (subfolders skipped), every
+                        file valid against the official schemas, report rows
+                        and totals matching the outputs
+  calibrate [FILE]      run the CLI on kit/samples/ and compare each output
+                        that has a kit/expected_outputs/ file (or only FILE,
+                        e.g. s01.dat): MATCH or the differences; a dev tool,
+                        not part of test
   lint-docker           static Dockerfile check: no RUN step uses apt, pip,
                         curl, wget, git, npm or a URL; FROM pinned by digest
   save-base             docker save the pinned base image to dist/base-image.tar
   load-base             docker load dist/base-image.tar
   precheck              release checklist on a clean clone of HEAD: test,
                         conform, docs --check, lint-docker, offline build,
-                        docker run on samples/ + golden inputs, docker-smoke
+                        docker run on kit/samples/ (+ HINTS.md) and on the
+                        golden inputs, docker-smoke
 """
 
 
@@ -129,17 +136,23 @@ def host_path(path: str | Path) -> str:
     return full.replace("\\", "/") if os.name == "nt" else full
 
 
-def docker_run_args(inp: str | Path, out: str | Path) -> list[str]:
+# The three ways the image can be run (the contract's "./salvage IN OUT" first).
+ENTRY_FORMS = (("./salvage",), ("/salvage",), ())
+
+
+def docker_run_args(inp: str | Path, out: str | Path,
+                    entry: tuple[str, ...] = ENTRY_FORMS[0]) -> list[str]:
     """Arguments for ``docker`` that run the image on ``inp`` writing to ``out``."""
     return ["run", "--rm", "--network", "none",
             "-v", f"{host_path(inp)}:/in:ro", "-v", f"{host_path(out)}:/out",
-            IMAGE, "/salvage", "/in", "/out"]
+            IMAGE, *entry, "/in", "/out"]
 
 
-def docker_run(inp: str | Path, out: str | Path, **kw) -> int:
+def docker_run(inp: str | Path, out: str | Path, entry: tuple[str, ...] = ENTRY_FORMS[0],
+               **kw) -> int:
     """Create ``out`` and run the image on ``inp``; returns docker's exit code."""
     os.makedirs(out, exist_ok=True)
-    return _docker(docker_run_args(inp, out), **kw)
+    return _docker(docker_run_args(inp, out, entry), **kw)
 
 
 def cmd_build(offline: bool) -> int:
@@ -163,7 +176,10 @@ def cmd_docker_test() -> int:
 # -- docker-smoke ------------------------------------------------------------
 
 def smoke_inputs() -> dict[str, bytes]:
-    """The fixed docker-smoke input set (relative POSIX path -> bytes)."""
+    """The fixed docker-smoke input set (relative POSIX path -> bytes).
+
+    ``sub/nested.stub`` is in a subfolder, so it gets no output (non-recursive).
+    """
     magic = b"SALVAGE-STUB\x00"
     clean = magic + struct.pack("<H3I", 3, 10, 20, 30)
     return {
@@ -191,7 +207,7 @@ def cmd_docker_smoke() -> int:
     if not _docker_ready():
         return 1
     sys.path.insert(0, str(ROOT))
-    from salvage.core import emit
+    from salvagekit.core import emit
 
     results: list[tuple[str, bool, str]] = []
 
@@ -210,26 +226,34 @@ def cmd_docker_smoke() -> int:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as fh:
                 fh.write(data)
-        expected = set(emit.output_names(files).values()) | {"report.json"}
+        top = [rel for rel in files if "/" not in rel]
+        expected = set(emit.output_names(top).values()) | {"report.json"}
 
-        out_host, out_docker = os.path.join(tmp, "out-host"), os.path.join(tmp, "out-docker")
-        host = subprocess.run([sys.executable, "-m", "salvage.cli", inp, out_host],
+        out_host = os.path.join(tmp, "out-host")
+        host = subprocess.run([sys.executable, "-m", "salvagekit.cli", inp, out_host],
                               env=_env(), capture_output=True, timeout=DOCKER_RUN_TIMEOUT)
         check("host run exits 0", host.returncode == 0, f"exit {host.returncode}")
-        code = docker_run(inp, out_docker, capture_output=True)
-        check("docker run (--network none) exits 0", code == 0, f"exit {code}")
+        trees = {"host": _read_tree(out_host)}
+        for entry in ENTRY_FORMS:
+            side = "docker " + (" ".join(entry) or "(no command)")
+            out = os.path.join(tmp, f"out-docker-{len(trees)}")
+            code = docker_run(inp, out, entry, capture_output=True)
+            check(f"{side} /in /out (--network none) exits 0", code == 0, f"exit {code}")
+            trees[side] = _read_tree(out)
 
-        trees = {"host": _read_tree(out_host), "docker": _read_tree(out_docker)}
         for side, tree in trees.items():
             check(f"{side}: report.json present", "report.json" in tree)
-            check(f"{side}: one JSON per input ({len(files)} inputs)",
-                  set(tree) == expected,
+            check(f"{side}: one JSON per top-level input ({len(top)} inputs, 1 subfolder "
+                  "skipped)", set(tree) == expected,
                   f"missing {sorted(expected - set(tree))}, extra {sorted(set(tree) - expected)}"
                   if set(tree) != expected else f"{len(tree) - 1} outputs")
-        differ = sorted(rel for rel in set(trees["host"]) | set(trees["docker"])
-                        if trees["host"].get(rel) != trees["docker"].get(rel))
-        check("host and docker outputs byte-identical", not differ,
-              f"differ: {differ}" if differ else f"{len(trees['host'])} files compared")
+        base = trees["host"]
+        for side, tree in trees.items():
+            if side == "host":
+                continue
+            differ = sorted(rel for rel in set(base) | set(tree) if base.get(rel) != tree.get(rel))
+            check(f"host and {side} outputs byte-identical", not differ,
+                  f"differ: {differ}" if differ else f"{len(base)} files compared")
 
         code = _docker(["run", "--rm", IMAGE, "/tmp/does-not-exist", "/tmp/out"],
                        capture_output=True)
@@ -296,7 +320,7 @@ def cmd_bench(use_docker: bool) -> int:
                                       encoding="utf-8", errors="replace",
                                       timeout=DOCKER_RUN_TIMEOUT)
             else:
-                proc = subprocess.run([sys.executable, "-m", "salvage.cli", "--jobs", jobs,
+                proc = subprocess.run([sys.executable, "-m", "salvagekit.cli", "--jobs", jobs,
                                        "--stats", inp, out], env=_env(), capture_output=True,
                                       text=True, encoding="utf-8", errors="replace",
                                       timeout=DOCKER_RUN_TIMEOUT)
@@ -324,15 +348,24 @@ def cmd_bench(use_docker: bool) -> int:
 # -- check-outputs -----------------------------------------------------------
 
 def cmd_check_outputs(inp: str, out: str) -> int:
-    """Check a finished run's output folder; print one line per problem."""
+    """Check a finished run's output folder; print one line per problem.
+
+    The walk is non-recursive: one ``<name>.json`` per regular file directly
+    in ``inp`` plus report.json, nothing else; every file valid against the
+    official schemas; report.json's ``files`` rows in walk order and equal
+    to the per-file outputs; ``totals`` matching the rows; every skipped
+    subfolder listed in the diagnostics.
+    """
     sys.path.insert(0, str(ROOT))
     import json
 
-    from salvage.core import emit, validate, walk
+    from salvagekit.core import emit, report, validate, walk
 
-    inputs, _ = walk.list_inputs(inp, out)
+    inputs, skipped = walk.list_inputs(inp, out)
     rels = [i.rel for i in inputs]
-    expected = set(emit.output_names(rels).values()) | {emit.REPORT_NAME}
+    ci = emit.is_case_insensitive(out) if os.path.isdir(out) else True
+    names = emit.output_names(rels, case_insensitive=ci)
+    expected = set(names.values()) | {emit.REPORT_NAME}
     found = set(_read_tree(out)) if os.path.isdir(out) else set()
     problems: list[str] = []
     if emit.REPORT_NAME not in found:
@@ -340,19 +373,38 @@ def cmd_check_outputs(inp: str, out: str) -> int:
     problems += [f"missing output: {rel}" for rel in sorted(expected - found)
                  if rel != emit.REPORT_NAME]
     problems += [f"unexpected file: {rel}" for rel in sorted(found - expected)]
+    docs: dict[str, object] = {}
     for rel in sorted(expected & found):
         kind = "report" if rel == emit.REPORT_NAME else "output"
         try:
-            with open(os.path.join(out, *rel.split("/")), encoding="utf-8") as fh:
-                doc = json.load(fh)
+            with open(os.path.join(out, rel), encoding="utf-8") as fh:
+                docs[rel] = doc = json.load(fh)
         except (OSError, ValueError) as exc:
             problems.append(f"{rel}: cannot read JSON: {exc}")
             continue
         problems += [f"{rel}: {e}" for e in validate.errors(kind, doc)[:3]]
+    rep = docs.get(emit.REPORT_NAME)
+    if isinstance(rep, dict) and not validate.errors("report", rep):
+        rows = rep["files"]
+        if [r["file"] for r in rows] != rels:
+            problems.append("report.json: files[] is not one row per input in walk order")
+        for row in rows:
+            output = docs.get(names.get(row["file"], ""))
+            if isinstance(output, dict) and report.file_row(output) != row:
+                problems.append(f"report.json: the row for {row['file']} does not match "
+                                f"its output")
+        totals = dict.fromkeys(report.FILE_STATUSES, 0)
+        for row in rows:
+            totals[row["status"]] += 1
+        if rep["totals"] != totals:
+            problems.append(f"report.json: totals {rep['totals']} do not match the rows")
+        listed = {s["input"] for s in rep["diagnostics"]["skipped"]}
+        problems += [f"report.json: skipped {s.rel!r} is not listed in diagnostics"
+                     for s in skipped if s.rel not in listed]
     for p in problems:
         print(f"FAIL  {p}")
-    print(f"check-outputs: {len(rels)} inputs, {len(found)} files in output, "
-          f"{len(problems)} problems")
+    print(f"check-outputs: {len(rels)} inputs, {len(skipped)} skipped, {len(found)} files in "
+          f"output, {len(problems)} problems")
     return 1 if problems else 0
 
 
@@ -555,13 +607,13 @@ def cmd_precheck() -> int:
             keep, failed = True, 1
             return 1
         print(f"precheck: HEAD {head}, clean clone in {clone}")
-        # samples/ is organizer data and may not be committed: then use the
-        # working tree's copy (read only).
-        samples = os.path.join(clone, "samples")
-        if not os.path.isdir(samples) and (ROOT / "samples").is_dir():
-            samples = str(ROOT / "samples")
-            print(f"note: samples/ is not in HEAD; using the working tree's {samples}")
+        # kit/ (samples, hints, expected outputs) is committed: always the
+        # clone's copy, never the working tree's.
+        samples = os.path.join(clone, "kit", "samples")
+        hints = os.path.join(clone, "kit", "HINTS.md")
         have_samples = os.path.isdir(samples)
+        if not have_samples:
+            print("WARNING: kit/samples/ is not in HEAD; the samples step will FAIL")
 
         step("test", lambda: task("test", name="test"))
         step("conform (full)", lambda: task(
@@ -584,26 +636,42 @@ def cmd_precheck() -> int:
         stale = (False, "not run: the build failed, and the existing salvage:dev image "
                         "may not be HEAD")
 
-        def run_corpus() -> tuple[bool, str]:
+        def run_samples() -> tuple[bool, str]:
+            """The organizers' layout: kit/samples/ (with its subfolder) + HINTS.md."""
             if not built:
                 return stale
-            inp, out = os.path.join(tmp, "corpus-in"), os.path.join(tmp, "corpus-out")
-            os.makedirs(inp)
-            if have_samples:
-                shutil.copytree(samples, os.path.join(inp, "samples"))
-            for case in sorted(Path(clone, "tests").glob("*/cases/*")):
-                if case.is_file() and not case.name.endswith(".expected.json"):
-                    dest = Path(inp, "golden", case.parent.parent.name, case.name)
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(case, dest)
-            n = sum(len(files) for _, _, files in os.walk(inp))
+            if not have_samples:
+                return False, "kit/samples/ is not in HEAD"
+            inp, out = os.path.join(tmp, "samples-in"), os.path.join(tmp, "samples-out")
+            shutil.copytree(samples, inp)
+            if os.path.isfile(hints):
+                shutil.copyfile(hints, os.path.join(inp, "HINTS.md"))
+            n = len([e for e in os.listdir(inp) if os.path.isfile(os.path.join(inp, e))])
             code = docker_run(inp, out, capture_output=True)
             if code != 0:
                 return False, f"docker run exited {code}"
-            ok, detail = task("check-outputs", inp, out, name="check-outputs")
+            ok, detail = task("check-outputs", inp, out, name="check-outputs-samples")
+            return ok, f"{n} top-level inputs, exit 0; check-outputs {detail}"
+
+        def run_golden() -> tuple[bool, str]:
+            """Every golden case input, flat (non-recursive walk)."""
+            if not built:
+                return stale
+            inp, out = os.path.join(tmp, "golden-in"), os.path.join(tmp, "golden-out")
+            os.makedirs(inp)
+            n = 0
+            for case in sorted(Path(clone, "tests").glob("*/cases/*")):
+                if case.is_file() and not case.name.endswith(".expected.json"):
+                    shutil.copyfile(case, Path(inp, f"{case.parent.parent.name}-{case.name}"))
+                    n += 1
+            code = docker_run(inp, out, capture_output=True)
+            if code != 0:
+                return False, f"docker run exited {code}"
+            ok, detail = task("check-outputs", inp, out, name="check-outputs-golden")
             return ok, f"{n} inputs, exit 0; check-outputs {detail}"
 
-        step("docker run on samples/ + golden inputs", run_corpus)
+        step("docker run on kit/samples/ + HINTS.md", run_samples)
+        step("docker run on golden inputs", run_golden)
         step("docker-smoke", lambda: task("docker-smoke", name="docker-smoke") if built
              else stale)
         failed = sum(1 for _, ok, _, _ in results if not ok)
@@ -670,7 +738,7 @@ def main(argv: list[str]) -> int:
         return subprocess.call([sys.executable, str(ROOT / "tools" / "api_dump.py")], cwd=ROOT)
     if cmd == "run" and len(args) == 2:
         # Run from the caller's directory so relative IN/OUT mean what they say.
-        return subprocess.call([sys.executable, "-m", "salvage.cli", *args], env=_env())
+        return subprocess.call([sys.executable, "-m", "salvagekit.cli", *args], env=_env())
     if cmd in ("build", "build-offline") and not args:
         return cmd_build(offline=cmd == "build-offline")
     if cmd == "docker-run" and len(args) == 2:
@@ -690,6 +758,9 @@ def main(argv: list[str]) -> int:
                                cwd=ROOT)
     if cmd == "check-outputs" and len(args) == 2:
         return cmd_check_outputs(*args)
+    if cmd == "calibrate" and len(args) <= 1:
+        return subprocess.call([sys.executable, str(ROOT / "tools" / "calibrate.py"), *args],
+                               env=_env())
     if cmd == "lint-docker" and not args:
         return cmd_lint_docker()
     if cmd == "save-base" and not args:

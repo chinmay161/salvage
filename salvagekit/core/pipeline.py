@@ -11,8 +11,8 @@ import sys
 import threading
 from typing import Any, Callable
 
-from salvage.core import emit, isolate, report, validate, walk
-from salvage.core.limits import MAX_FILE_BYTES, MAX_SECONDS_PER_FILE
+from salvagekit.core import emit, isolate, report, validate, walk
+from salvagekit.core.limits import MAX_FILE_BYTES, MAX_SECONDS_PER_FILE
 
 Progress = Callable[[dict[str, Any]], None]
 
@@ -24,14 +24,15 @@ def default_jobs() -> int:
     return max(1, min(os.cpu_count() or 1, 4))
 
 
-def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.formats",
+def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvagekit.formats",
         timeout: float = MAX_SECONDS_PER_FILE, progress: Progress | None = None,
         jobs: int = 1, stats: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Process every regular file under ``input_dir``; return the report dict.
+    """Process every regular file directly in ``input_dir`` (non-recursive);
+    return the report dict.
 
     Writes one JSON per input plus ``report.json`` (written last, also when
     the run fails midway) into ``output_dir``. Problems are recorded in the
-    report, never raised. ``progress`` is called with each finished report
+    report's diagnostics, never raised. ``progress`` is called with each finished report
     entry, in completion order. Never overwrites an input file, and never
     deletes anything in ``output_dir``.
 
@@ -42,17 +43,18 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
     SIGINT and SIGTERM (Ctrl-C, ``docker stop``) are handled while this
     runs (main thread only): no new file is started, running workers are
     killed, and report.json is written with the files finished so far plus
-    the run-level error "interrupted: N files not processed". Files not
+    the run-level error (diagnostics) "interrupted: N files not processed". Files not
     finished get no output. ``stats`` (if given) receives ``jobs``,
     ``peak_workers`` and ``files``.
 
     On Windows workers are started with "spawn", which re-imports the
     calling script: scripts that call run() need an
-    ``if __name__ == "__main__":`` guard (``python -m salvage.cli`` has one).
+    ``if __name__ == "__main__":`` guard (``python -m salvagekit.cli`` has one).
     """
     jobs = max(1, int(jobs))
     rep = report.new_report()
-    out_ok = _prepare_output(output_dir, rep)
+    diag = rep["diagnostics"]
+    out_ok = _prepare_output(output_dir, diag)
     protected: set[str] = set()
     interrupt = _Interrupt()
     peak = 0
@@ -62,27 +64,29 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
             return rep
         existing = _count_files(output_dir)
         if existing:
-            rep["warnings"].append(f"output dir was not empty: {existing} existing files")
+            diag["warnings"].append(f"output dir was not empty: {existing} existing files")
         if not os.path.isdir(input_dir):
-            rep["errors"].append("input directory does not exist or is not a directory")
+            diag["errors"].append("input directory does not exist or is not a directory")
             return rep
         try:
             os.listdir(input_dir)
         except OSError as exc:
-            rep["errors"].append(f"input directory is not readable: {_strerror(exc)}")
+            diag["errors"].append(f"input directory is not readable: {_strerror(exc)}")
             return rep
 
         inputs, skipped = walk.list_inputs(input_dir, output_dir)
-        rep["skipped"] = [{"input": emit.display_path(s.rel), "reason": s.reason}
-                          for s in skipped]
+        diag["skipped"] = [{"input": emit.display_path(s.rel), "reason": s.reason}
+                           for s in skipped]
         root = os.path.abspath(input_dir)
         if folders_overlap(input_dir, output_dir):
             # Only then can an output land on an input: guard every target.
             protected = {_key(i.path) for i in inputs}
-            protected |= {_key(os.path.join(root, *s.rel.split("/"))) for s in skipped}
-        names = emit.output_names(i.rel for i in inputs)
+            protected |= {_key(os.path.join(root, s.rel)) for s in skipped}
+        names = emit.output_names((i.rel for i in inputs),
+                                  case_insensitive=emit.is_case_insensitive(output_dir))
         run_errors: list[str] = list(validate.load_problems())
         entries: list[dict[str, Any] | None] = [None] * len(inputs)
+        rows: list[dict[str, Any] | None] = [None] * len(inputs)
 
         def finish(i: int, output: dict[str, Any], entry: dict[str, Any],
                    errs: list[str]) -> None:
@@ -92,6 +96,7 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
                 output, bug = checked_output(item.rel, output, entry)
             except Exception as exc:  # noqa: BLE001 - pragma: no cover - defensive
                 bug = f"internal error: validating {item.rel}: {type(exc).__name__}: {exc}"
+            rows[i] = report.file_row(output)
             if bug:
                 errs = [*errs, bug]
             for err in errs:
@@ -99,7 +104,7 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
                     run_errors.append(err)
             out_rel = names[item.rel]
             entry["output"] = emit.display_path(out_rel)
-            target = os.path.join(output_dir, *out_rel.split("/"))
+            target = os.path.join(output_dir, out_rel)
             try:
                 if protected and _key(target) in protected:
                     raise OSError(0, "refusing to overwrite an input file")
@@ -155,13 +160,14 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
                 isolate.drive([w for w, _ in running.values()])
                 running = {i: r for i, r in running.items() if not r[0].done}
 
-        rep["files"] = [e for e in entries if e is not None]
-        rep["errors"].extend(sorted(run_errors))
+        rep["files"] = [r for r in rows if r is not None]
+        diag["files"] = [e for e in entries if e is not None]
+        diag["errors"].extend(sorted(run_errors))
         missing = len(inputs) - len(rep["files"])
         if interrupt.flag and missing:
-            rep["errors"].append(f"interrupted: {missing} files not processed")
+            diag["errors"].append(f"interrupted: {missing} files not processed")
     except Exception as exc:  # noqa: BLE001 - report it, keep the report
-        rep["errors"].append(f"internal error: {type(exc).__name__}: {exc}")
+        diag["errors"].append(f"internal error: {type(exc).__name__}: {exc}")
     finally:
         report.summarize(rep)
         _check_report(rep)
@@ -172,7 +178,7 @@ def run(input_dir: str, output_dir: str, *, decoder_package: str = "salvage.form
                     raise OSError(0, "refusing to overwrite an input file")
                 emit.write_json(target, rep)
             except (OSError, ValueError, TypeError) as exc:
-                rep["errors"].append(f"cannot write report: {_strerror(exc)}")
+                diag["errors"].append(f"cannot write report: {_strerror(exc)}")
         interrupt.restore()
         if stats is not None:
             stats.update({"jobs": jobs, "peak_workers": peak, "files": len(rep["files"])})
@@ -212,7 +218,6 @@ def _collect(item: walk.InputFile, worker: isolate.Worker, sha: str | None) -> D
 
 def _unpack(payload: dict[str, Any], sha: str | None) -> Done:
     output, entry = payload["output"], payload["entry"]
-    output["source"]["sha256"] = sha
     entry["sha256"] = sha
     return output, entry, [str(e) for e in payload.get("run_errors") or []]
 
@@ -271,37 +276,28 @@ REPLACED_SHOWN = 10  # validation errors listed in a replacement output
 
 def checked_output(rel: str, output: dict[str, Any], entry: dict[str, Any]
                    ) -> tuple[dict[str, Any], str | None]:
-    """Validate a per-file output against the active output schema.
+    """Validate a per-file output against the official output schema.
 
     Valid: ``(output, None)``. Invalid: returns a minimal "failed"
-    replacement (same format/variant/confidence, no records) whose errors
-    list the first 10 validation errors, and updates ``entry`` in place to
-    match it. If even the replacement is invalid that is a bug: it is still
-    returned, with a run-level error as the second value.
+    replacement (same format; no metadata, records or damage) and updates
+    ``entry`` in place to match it; the entry's errors list the first 10
+    validation errors. If even the replacement is invalid that is a bug: it
+    is still returned, with a run-level error as the second value.
     """
     problems = validate.errors("output", output)
     if not problems:
         return output, None
     errors = [f"decoder output failed schema validation ({len(problems)}"
-              f"{'+' if len(problems) >= 50 else ''} errors); replaced by this failed "
+              f"{'+' if len(problems) >= 50 else ''} errors); replaced by a failed "
               f"output. First {min(len(problems), REPLACED_SHOWN)}:"]
     errors += problems[:REPLACED_SHOWN]
-    fmt = output.get("format")
-    fmt = fmt if isinstance(fmt, str) and fmt else "unknown"
-    variant = output.get("variant")
-    variant = variant if isinstance(variant, str) and variant else None
-    conf = output.get("confidence")
-    conf = float(conf) if (isinstance(conf, (int, float)) and not isinstance(conf, bool)
-                           and 0.0 <= conf <= 1.0) else 0.0
-    size = entry.get("size")
-    size = size if isinstance(size, int) and not isinstance(size, bool) and size >= 0 else 0
-    sha = entry.get("sha256") if isinstance(entry.get("sha256"), str) else None
-    replacement = emit.to_output(rel=rel, size=size, sha256=sha, fmt=fmt, variant=variant,
-                                 confidence=conf, status="failed", errors=errors)
+    fmt = output.get("format") if isinstance(output, dict) else None
+    fmt = fmt if isinstance(fmt, str) and fmt else emit.UNKNOWN_FORMAT
+    replacement = emit.to_output(source_file=rel, fmt=fmt, status="failed")
     zero = dict.fromkeys(report.TRUST, 0)
-    entry.update({"status": "failed", "format": fmt, "variant": variant, "confidence": conf,
+    entry.update({"status": "failed", "format": fmt,
                   "records_by_status": dict(zero), "fields_by_status": dict(zero),
-                  "members": 0, "damage": [], "coverage": None, "warnings": [],
+                  "members": 0, "damage": [], "coverage": None, "bytes": None,
                   "errors": [str(e) for e in entry.get("errors") or []
                              if isinstance(e, str)] + errors})
     still = validate.errors("output", replacement)
@@ -324,7 +320,7 @@ def _check_report(rep: dict[str, Any]) -> None:
         return
     message = (f"report.json fails schema validation ({len(problems)} errors); first: "
                + "; ".join(problems[:3]))
-    rep["errors"].append(message)
+    rep["diagnostics"]["errors"].append(message)
     try:
         sys.stderr.write(f"salvage: error: {message}\n")
     except Exception:
@@ -353,14 +349,14 @@ def sha256_file(path: str) -> str | None:
         os.close(fd)
 
 
-def _prepare_output(output_dir: str, rep: dict[str, Any]) -> bool:
+def _prepare_output(output_dir: str, diag: dict[str, Any]) -> bool:
     try:
         os.makedirs(output_dir, exist_ok=True)
         if not os.path.isdir(output_dir):
             raise NotADirectoryError(0, "not a directory")
         return True
     except OSError as exc:
-        rep["errors"].append(f"cannot create output directory: {_strerror(exc)}")
+        diag["errors"].append(f"cannot create output directory: {_strerror(exc)}")
         return False
 
 

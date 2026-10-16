@@ -6,7 +6,7 @@
 
 * reads its source with ``ast`` (C8 static rules) and checks its golden
   cases and docs folders (C10, C11);
-* runs ALL decoder code in one spawn-context worker process (C1-C6, C9).
+* runs ALL decoder code in one spawn-context worker process (C1-C6, C9, C12).
   The worker sends ``("start", step)`` before each step and ``("done",
   payload)`` after it; the parent gives every step a deadline and kills the
   worker on a timeout or crash, skipping that decoder's remaining steps;
@@ -14,7 +14,7 @@
   PYTHONHASHSEED=1 and 2 and compares the JSON (C7).
 
 The parent never imports decoder modules, so a hanging or crashing decoder
-cannot hang or crash the suite. Check IDs C1-C11 are part of the interface;
+cannot hang or crash the suite. Check IDs C1-C12 are part of the interface;
 docs/conformance.md explains each one. Not a test module itself (see
 tests/core/test_conformance.py and test_conformance_selftest.py).
 """
@@ -45,11 +45,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from salvage.core import isolate, validate
-from salvage.core.limits import MAX_FILE_BYTES, PROBE_THRESHOLD
-from salvage.core.model import DecodeResult, Record, Status, json_safe
-from salvage.core.plugin import Decoder, discover_decoders
-from salvage.core.reader import SafeReader
+from salvagekit.core import contract_shapes, isolate, validate
+from salvagekit.core.limits import MAX_FILE_BYTES, PROBE_THRESHOLD
+from salvagekit.core.model import DecodeResult, Record, Status, json_safe
+from salvagekit.core.plugin import Decoder, discover_decoders
+from salvagekit.core.reader import SafeReader
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -57,7 +57,7 @@ CHECKS = {
     "C1": "metadata", "C2": "probe safety", "C3": "probe precision",
     "C4": "decode safety", "C5": "honesty", "C6": "round trip",
     "C7": "determinism", "C8": "static rules", "C9": "speed",
-    "C10": "tests", "C11": "docs",
+    "C10": "tests", "C11": "docs", "C12": "record shape",
 }
 FAIL, WARN = "FAIL", "WARN"
 
@@ -68,7 +68,12 @@ BIG_INPUT = 1024 * 1024               # inputs over this get fewer variants
 STARTUP_TIMEOUT = 60.0                # worker start-up + decoder import
 GAP_TIMEOUT = 60.0                    # worker work between steps (reading, variants)
 MAX_FINDINGS_PER_CHECK = 20           # per decoder; the rest are counted
-_EPS = 1e-9                           # same slack as salvage.core.identify
+_EPS = 1e-9                           # same slack as salvagekit.core.identify
+
+# C1: in the real package a decoder name must be a contract format name;
+# these test-only decoders keep their own names (fixture packages are exempt).
+REAL_PACKAGE = "salvagekit.formats"
+TEST_ONLY_DECODERS = ("STUB",)
 
 
 # -- results -----------------------------------------------------------------
@@ -335,7 +340,7 @@ class _StaticChecker(ast.NodeVisitor):
         top = full.split(".")[0]
         if top in FORBIDDEN_MODULES:
             self._bad(node, f"forbidden import {full}")
-        elif full == "salvage.core" or full.startswith("salvage.core."):
+        elif full == "salvagekit.core" or full.startswith("salvagekit.core."):
             return
         elif full.startswith(self.package + "."):
             short = full[len(self.package) + 1:].split(".")[0]
@@ -348,7 +353,7 @@ class _StaticChecker(ast.NodeVisitor):
             return
         else:
             self._bad(node, f"import {full} not allowed (only the standard library, "
-                            f"salvage.core and private helpers {self.package}._*)")
+                            f"salvagekit.core and private helpers {self.package}._*)")
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
@@ -398,8 +403,12 @@ def load_decoder(module: str, name: str) -> Decoder:
     raise LookupError(f"no decoder named {name!r} in {module}")
 
 
-def metadata_problems(dec: Decoder) -> list[str]:
-    """C1: problems with ``name`` and ``extensions``."""
+def metadata_problems(dec: Decoder, contract_names: bool = False) -> list[str]:
+    """C1: problems with ``name`` and ``extensions``.
+
+    ``contract_names`` (the real package): the name must also be one of the
+    contract's format names, unless it is in :data:`TEST_ONLY_DECODERS`.
+    """
     out: list[str] = []
     name = getattr(dec, "name", None)
     if not isinstance(name, str) or not name:
@@ -408,6 +417,11 @@ def metadata_problems(dec: Decoder) -> list[str]:
         out.append(f"name {name!r} is longer than 32 characters")
     elif not re.fullmatch(r"[A-Z0-9 ._-]+", name):
         out.append(f"name {name!r} may only use uppercase letters, digits, space and . - _")
+    elif (contract_names and name not in contract_shapes.CONTRACT_FORMATS
+          and name not in TEST_ONLY_DECODERS):
+        out.append(f"name {name!r} is not a contract format name (one of "
+                   f"{', '.join(contract_shapes.CONTRACT_FORMATS)}); it is the output's "
+                   "\"format\"")
     ext = getattr(dec, "extensions", None)
     if not isinstance(ext, tuple):
         out.append(f"extensions must be a tuple, got {type(ext).__name__}")
@@ -536,9 +550,37 @@ def decode_summary(dec: Decoder, data: bytes, all_fields: bool,
 def schema_problems(dec: Decoder, rel: str, data: bytes) -> list[str]:
     """Build the per-file output exactly as the pipeline does; return schema errors."""
     payload = isolate.process_data(rel, data, [dec])
-    output = payload["output"]
-    output["source"]["sha256"] = hashlib.sha256(data).hexdigest()
-    return validate.errors("output", output, limit=3)
+    return validate.errors("output", payload["output"], limit=3)
+
+
+def shape_problems(dec: Decoder, rel: str, data: bytes) -> list[str]:
+    """C12: the per-file output's records and metadata against the decoder's
+    contract shape (:mod:`salvagekit.core.contract_shapes`).
+
+    Each distinct problem is reported once, with the first record it was
+    seen in and how many records have it. A null in a record marked
+    ``"verified": false`` is allowed (a LOST value). Failed or unrecognized
+    outputs give [] (C4 covers those).
+    """
+    name = str(getattr(dec, "name", ""))
+    if name not in contract_shapes.SHAPES:
+        return []
+    output = isolate.process_data(rel, data, [dec])["output"]
+    if output.get("status") in ("failed", "unrecognized"):
+        return []
+    seen: dict[str, list[int]] = {}
+    for i, record in enumerate(output.get("records") or []):
+        lost_ok = isinstance(record, dict) and record.get("verified") is False
+        for problem in contract_shapes.record_problems(name, record):
+            if lost_ok and problem.endswith("is null (the contract does not allow null)"):
+                continue
+            seen.setdefault(problem, []).append(i)
+    out = [f"records[{where[0]}]: {problem}"
+           + (f" (and {len(where) - 1} more records)" if len(where) > 1 else "")
+           for problem, where in seen.items()]
+    out += [f"metadata: {p}"
+            for p in contract_shapes.metadata_problems(name, output.get("metadata"))]
+    return out
 
 
 def round_trip(dec: Decoder, result: DecodeResult, data: bytes) -> dict[str, Any]:
@@ -589,7 +631,8 @@ def _worker_main(conn: Any, job: dict[str, Any]) -> None:
             conn.send(("load_error", _exc_where(exc)))
             return
         can_encode = bool(dec.can_encode())
-        conn.send(("hello", {"c1": metadata_problems(dec), "can_encode": can_encode}))
+        conn.send(("hello", {"c1": metadata_problems(dec, job.get("contract_names", False)),
+                             "can_encode": can_encode}))
 
         # Probes (C2, C3) and claimed inputs.
         claimed: list[tuple[str, str]] = []
@@ -624,6 +667,7 @@ def _worker_main(conn: Any, job: dict[str, Any]) -> None:
             kept: dict[str, Any] = {}
             clean = step("clean", label, None, lambda: decode_summary(dec, data, True, kept))
             step("clean-schema", label, None, lambda: schema_problems(dec, rel, data))
+            step("clean-shape", label, None, lambda: shape_problems(dec, rel, data))
             if (can_encode and clean["error"] is None and not clean["problems"]
                     and not clean["empty"] and not clean["damage"] and not clean["lost"]):
                 step("encode", label, None, lambda: round_trip(dec, kept["result"], data))
@@ -782,8 +826,8 @@ class _State:
     slow: list[tuple[str, str, str, float]] = field(default_factory=list)
 
 
-def run_conformance(package: str = "salvage.formats", only: str | None = None,
-                    cases_root: str | Path = "tests", samples_root: str | Path = "samples",
+def run_conformance(package: str = "salvagekit.formats", only: str | None = None,
+                    cases_root: str | Path = "tests", samples_root: str | Path = "kit/samples",
                     variant_timeout: float = 5.0, *, docs_root: str | Path = "docs",
                     jobs: int | None = None, quick: bool = False) -> list[DecoderReport]:
     """Check every decoder in ``package`` (or the one ``only`` names).
@@ -864,6 +908,7 @@ def _check_decoder(name: str, module: str, package: str, files: list[CorpusFile]
             rep.add("C8", FAIL, problem)
         _check_files(rep, short, roots)
         child = _Child(_worker_main, {"module": module, "name": name, "quick": quick,
+                                      "contract_names": package == REAL_PACKAGE,
                                       "corpus": [(f.label, f.path) for f in files]})
         finished = _run_worker(rep, st, child, variant_timeout)
         if st.claimed is not None:
@@ -897,7 +942,7 @@ def _check_files(rep: DecoderReport, short: str, roots: tuple[Path, Path, Path])
     cases_root, _, docs_root = roots
     cases = cases_root / short / "cases"
     fix = (f"run `python tools/task.py golden-update {short}` and check every "
-           ".expected.json by hand (docs/decoder-guide.md section 10)")
+           ".expected.json by hand (docs/decoder-guide.md section 12)")
     if not cases.is_dir():
         rep.add("C10", FAIL, f"no golden cases: create {display(cases)}/ with at least one "
                              f"input file, then {fix}")
@@ -913,7 +958,7 @@ def _check_files(rep: DecoderReport, short: str, roots: tuple[Path, Path, Path])
                              "the format")
     if not log.is_file():
         rep.add("C11", WARN, f"{display(log)} is missing: keep a research log "
-                             "(docs/decoder-guide.md section 11)")
+                             "(docs/decoder-guide.md section 14)")
     else:
         try:
             text = log.read_text(encoding="utf-8")
@@ -926,7 +971,7 @@ def _check_files(rep: DecoderReport, short: str, roots: tuple[Path, Path, Path])
 
 
 def _step_timeout(kind: str, variant_timeout: float) -> float:
-    if kind in ("clean", "clean-schema"):
+    if kind in ("clean", "clean-schema", "clean-shape"):
         return max(variant_timeout, 2 * DECODE_SPEED_LIMIT)
     return variant_timeout
 
@@ -975,6 +1020,7 @@ def _where(step: tuple[str, str, str | None] | None) -> str:
         return f"{variant} of {label}"
     return {"probe": f"probe of {label}", "probe-speed": "probe of 8 MB random bytes",
             "clean": f"clean decode of {label}", "clean-schema": f"pipeline output of {label}",
+            "clean-shape": f"record shape check of {label}",
             "encode": f"encode() of {label}", "synthetic": f"synthetic input {label}"
             }.get(kind, f"{kind} {label}")
 
@@ -996,6 +1042,7 @@ def _worker_failed(rep: DecoderReport, st: _State, step: tuple[str, str, str | N
     check = {"probe": "C2", "probe-speed": "C2", "encode": "C6"}.get(kind, "C4")
     on = variant or {"probe": "probe", "probe-speed": "probe of 8 MB random bytes",
                      "clean": "the clean decode", "clean-schema": "the pipeline run",
+                     "clean-shape": "the record shape check",
                      "encode": "encode()"}.get(kind, "decode")
     what = {"timeout": f"timed out on {on} (limit {timeout:g} s)",
             "crash": f"worker crashed on {on} (exit code {msg[-1]})"}.get(
@@ -1026,6 +1073,9 @@ def _on_done(rep: DecoderReport, st: _State, step: tuple[str, str, str | None],
             st.slow.append(("C9", label, kind, payload["seconds"]))   # judged by _remeasure
     elif kind == "clean-schema":
         _judge_schema(rep, payload, label, None)
+    elif kind == "clean-shape":
+        for problem in payload:
+            rep.add("C12", FAIL, problem, input=label)
     elif kind == "encode":
         _judge_round_trip(rep, payload, label)
     elif kind == "variant":
@@ -1300,14 +1350,14 @@ def main(argv: list[str] | None = None) -> int:
                                  description="Decoder conformance suite (docs/conformance.md).")
     ap.add_argument("name", nargs="?", help="decoder name or module name (default: all)")
     ap.add_argument("--verbose", "-v", action="store_true", help="list every finding")
-    ap.add_argument("--package", default="salvage.formats")
+    ap.add_argument("--package", default="salvagekit.formats")
     ap.add_argument("--cases-root", default=None, help="default: tests")
-    ap.add_argument("--samples-root", default=None, help="default: samples")
+    ap.add_argument("--samples-root", default=None, help="default: kit/samples")
     ap.add_argument("--docs-root", default=None, help="default: docs")
     ap.add_argument("--timeout", type=float, default=5.0, help="seconds per variant")
     ap.add_argument("--jobs", type=int, default=None, help="decoders checked at once")
     ap.add_argument("--quick", action="store_true",
-                    help="the merge gate's mode: no samples/, fewer variants, C7 on one "
+                    help="the merge gate's mode: no kit/samples/, fewer variants, C7 on one "
                          "input (default: full)")
     args = ap.parse_args(argv)
 
@@ -1316,7 +1366,7 @@ def main(argv: list[str] | None = None) -> int:
 
     start = time.monotonic()
     reports = run_conformance(args.package, args.name, root(args.cases_root, "tests"),
-                              root(args.samples_root, "samples"), args.timeout,
+                              root(args.samples_root, "kit/samples"), args.timeout,
                               docs_root=root(args.docs_root, "docs"), jobs=args.jobs,
                               quick=args.quick)
     for line in format_lines(reports, args.verbose):

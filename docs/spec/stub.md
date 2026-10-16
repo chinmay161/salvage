@@ -3,7 +3,7 @@
 ## Summary
 
 Synthetic test format made up by Core to exercise the pipeline. No
-samples exist; `salvage/formats/stub.py` defines it. Test-only: it is
+samples exist; `salvagekit/formats/stub.py` defines it. Test-only: it is
 excluded from FORMAT-SPEC.md.
 
 ## Identification

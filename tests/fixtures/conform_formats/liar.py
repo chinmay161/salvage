@@ -1,6 +1,6 @@
 """CF-LIAR: marks every field verified without checking anything (expected: C5)."""
 
-from salvage.core.model import Status
+from salvagekit.core.model import Status
 from tests.fixtures.conform_formats._base import CrcDecoder
 
 

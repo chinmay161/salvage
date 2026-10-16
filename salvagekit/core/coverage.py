@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from salvage.core.reader import SafeReader
+from salvagekit.core.reader import SafeReader
 
 PADDING = "padding"
 MAX_RANGES = 100

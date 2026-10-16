@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import struct
 
-from salvage.core import checksums
-from salvage.core.model import Damage, DamageKind, DecodeResult, Field, Record, Status
-from salvage.core.plugin import Decoder
-from salvage.core.reader import SafeReader
-from salvage.core.resync import ByteView, resync, resync_damage
+from salvagekit.core import checksums
+from salvagekit.core.model import Damage, DamageKind, DecodeResult, Field, Record, Status
+from salvagekit.core.plugin import Decoder
+from salvagekit.core.reader import SafeReader
+from salvagekit.core.resync import ByteView, resync, resync_damage
 
 MARKER = b"\xA5\x5A"
 HEADER_SIZE = 10
@@ -100,7 +100,7 @@ class CrcDecoder(Decoder):
             header.fields.append(Field("count", count, 4, 2, Status.UNVERIFIED,
                                        f"header CRC-32 mismatch: stored {stored:#010x}, "
                                        f"computed {computed:#010x}"))
-            result.damage.append(Damage(0, HEADER_SIZE, DamageKind.CHECKSUM,
+            result.damage.append(Damage(0, HEADER_SIZE, DamageKind.HEADER_CHECKSUM,
                                         "header CRC-32 mismatch"))
         header.status = Status.worst(f.status for f in header.fields)
 
@@ -136,7 +136,7 @@ class CrcDecoder(Decoder):
                 verified += 1
             else:
                 status, evidence = Status.UNVERIFIED, "CRC-32 mismatch"
-                result.damage.append(Damage(off, reader.tell(), DamageKind.CHECKSUM,
+                result.damage.append(Damage(off, reader.tell(), DamageKind.CRC_MISMATCH,
                                             f"record {i}: CRC-32 mismatch"))
             result.records.append(Record(offset=off, status=status, kind=kind, fields=[
                 Field(kind, value, off + 4, n, status, evidence)]))

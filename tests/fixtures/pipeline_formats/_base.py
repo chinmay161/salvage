@@ -1,6 +1,6 @@
 """Shared probe for the test decoders (underscore: not discovered)."""
 
-from salvage.core.plugin import Decoder
+from salvagekit.core.plugin import Decoder
 
 
 class MagicDecoder(Decoder):

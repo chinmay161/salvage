@@ -1,12 +1,12 @@
-"""Run a single decoder from the command line: ``python -m salvage.formats.x FILE``."""
+"""Run a single decoder from the command line: ``python -m salvagekit.formats.x FILE``."""
 
 from __future__ import annotations
 
 import json
 import sys
 
-from salvage.core.plugin import Decoder
-from salvage.core.reader import SafeReader
+from salvagekit.core.plugin import Decoder
+from salvagekit.core.reader import SafeReader
 
 
 def run_standalone(decoder_cls: type[Decoder]) -> int:

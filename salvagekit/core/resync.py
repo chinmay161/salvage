@@ -11,9 +11,9 @@ from __future__ import annotations
 import struct
 from typing import Callable, NamedTuple
 
-from salvage.core import limits
-from salvage.core.model import Damage, DamageKind
-from salvage.core.reader import SafeReader
+from salvagekit.core import limits
+from salvagekit.core.model import Damage, DamageKind
+from salvagekit.core.reader import SafeReader
 
 _U16LE, _U16BE = struct.Struct("<H"), struct.Struct(">H")
 _U32LE, _U32BE = struct.Struct("<I"), struct.Struct(">I")
@@ -126,7 +126,7 @@ def resync(reader: SafeReader, is_valid_start: StartCheck, *, start: int | None 
 
 
 def resync_damage(result: ResyncResult, reason: str) -> Damage | None:
-    """``Damage(UNPARSED)`` over the skipped range, or None if nothing was skipped."""
+    """``Damage(UNPARSED_BYTES)`` over the skipped range, or None if nothing was skipped."""
     if result.skipped_end <= result.skipped_start:
         return None
-    return Damage(result.skipped_start, result.skipped_end, DamageKind.UNPARSED, reason)
+    return Damage(result.skipped_start, result.skipped_end, DamageKind.UNPARSED_BYTES, reason)

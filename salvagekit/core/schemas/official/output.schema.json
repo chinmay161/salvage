@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "salvage:official/output.schema.json",
+  "title": "Salvage per-file output (<input file name>.json)",
+  "description": "Encodes kit/OUTPUT-CONTRACT.md, with the decisions taken from kit/expected_outputs/ (docs/output-format.md). Exactly six top-level keys; records are flat objects whose graded fields per format are in salvagekit/core/contract_shapes.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_file", "format", "status", "metadata", "records", "damage"],
+  "properties": {
+    "source_file": {"type": "string", "minLength": 1},
+    "format": {"type": "string", "minLength": 1},
+    "status": {"enum": ["ok", "partial", "unsupported", "unrecognized", "failed"]},
+    "metadata": {"type": "object"},
+    "records": {"type": "array", "items": {"$ref": "#/$defs/record"}},
+    "damage": {"type": "array", "items": {"$ref": "#/$defs/damage"}}
+  },
+  "allOf": [
+    {
+      "$comment": "unrecognized = no decoder recognized the file: format UNKNOWN, nothing decoded",
+      "anyOf": [
+        {"properties": {"status": {"not": {"const": "unrecognized"}}}},
+        {"properties": {"format": {"const": "UNKNOWN"}, "records": {"maxItems": 0},
+                        "damage": {"maxItems": 0}}}
+      ]
+    },
+    {
+      "$comment": "ok = nothing lost or unverified: no damage, no record marked verified false",
+      "anyOf": [
+        {"properties": {"status": {"not": {"const": "ok"}}}},
+        {"properties": {"damage": {"maxItems": 0},
+                        "records": {"items": {"properties": {"verified": {"const": true}}}}}}
+      ]
+    }
+  ],
+  "$defs": {
+    "kind": {"enum": ["truncated", "crc_mismatch", "checksum_mismatch", "bad_length",
+                      "unparsed_bytes", "count_mismatch", "invalid_value", "oob_pointer",
+                      "index_missing", "header_checksum", "encrypted", "unknown_record"]},
+    "record": {
+      "type": "object",
+      "properties": {
+        "verified": {"type": "boolean"},
+        "issues": {"type": "array", "items": {"$ref": "#/$defs/kind"}}
+      }
+    },
+    "damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "offset", "detail", "lossy"],
+      "properties": {
+        "kind": {"$ref": "#/$defs/kind"},
+        "offset": {"type": "integer", "minimum": 0},
+        "detail": {"type": "string"},
+        "lossy": {"type": "boolean"}
+      }
+    }
+  }
+}

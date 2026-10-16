@@ -8,7 +8,7 @@ Expectations come from the real pipeline; the nondet one is order-random by desi
 import sys
 from pathlib import Path
 
-from salvage.core import emit
+from salvagekit.core import emit
 from tests import golden
 from tests.fixtures.conform_formats import _base
 
@@ -18,7 +18,7 @@ FIXTURES = {
     "ok": b"CFOK", "greedyprobe": b"CFGP", "slowprobe": b"CFSP", "raisetrunc": b"CFRT",
     "badoffset": b"CFBO", "hang": b"CFHG", "liar": b"CFLR", "badtrip": b"CFBT",
     "nondet": b"CFND", "forbidden": b"CFFB", "slow": b"CFSL", "crash": b"CFCR",
-    "warmup": b"CFWU",
+    "warmup": b"CFWU", "badshape": b"CFBS",
 }
 
 

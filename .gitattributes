@@ -1,4 +1,6 @@
 * text=auto eol=lf
-samples/** -text
+*.cmd text eol=crlf
+salvage text eol=lf
+kit/samples/** -text
 tests/**/cases/** -text
 *.bin -text

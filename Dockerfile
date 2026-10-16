@@ -6,15 +6,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
-COPY salvage/ /app/salvage/
+COPY salvagekit/ /app/salvagekit/
 COPY vendor/ /app/vendor/
-COPY docker/salvage /salvage
+COPY salvage /app/salvage
 COPY docker/entrypoint.sh /usr/local/bin/salvage-entrypoint
-RUN chmod 755 /salvage /usr/local/bin/salvage-entrypoint \
+RUN chmod 755 /app/salvage /usr/local/bin/salvage-entrypoint \
+    && ln -s /app/salvage /salvage \
     && python3 -m compileall -q /app
 
 # Runs as root on purpose: an output folder that Docker creates for a bind
 # mount on a Linux host is owned by root, and a non-root user could not
 # write to it. Pass --user "$(id -u):$(id -g)" for host-owned output files.
-WORKDIR /work
+# /app holds ./salvage, so "docker run IMAGE ./salvage /in /out" works too.
+WORKDIR /app
 ENTRYPOINT ["/usr/local/bin/salvage-entrypoint"]

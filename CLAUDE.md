@@ -1,12 +1,17 @@
 # Salvage
 
-Offline CLI: `/salvage <input_dir> <output_dir>`. Identifies each input file's
-legacy binary format, decodes it, validates it, and writes one schema-valid
-JSON per input plus `report.json`. Damaged files are recovered as far as
-possible and the damage is reported honestly. Hackathon project, 4 people.
+Offline CLI: `./salvage <input_dir> <output_dir>` (repo root; Docker:
+`IMAGE ./salvage /in /out`). The Python package is `salvagekit`. Identifies
+the legacy binary format of each file directly in input_dir (non-recursive),
+decodes it, validates it, and writes `<file name>.json` per input plus
+`report.json`, exactly per the organizers' contract (kit/OUTPUT-CONTRACT.md;
+our decisions in docs/output-format.md). Damaged files are recovered as far
+as possible and the damage is reported honestly. Hackathon project, 4 people.
 
 ## Hard rules
-- Python 3.12, standard library only. No pip installs, no network, ever.
+- Standard library only. No pip installs, no network, ever. Develop on
+  Python 3.12; the code must also run on 3.10 (the minimum, checked in a
+  python:3.10-slim container).
 - The CLI always exits 0, even on bad arguments or a missing input dir.
 - One bad input file must never stop the run or affect another file's output.
 - Never invent data. `verified` needs real evidence (checksum, round trip,
@@ -18,25 +23,31 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
   endings.
 
 ## Ownership
-- Core (lead): salvage/core/, salvage/cli.py, salvage/formats/stub.py,
-  tests/core/, tests/fixtures/, tools/ (except tools/fuzz.py), Dockerfile,
+- Core (lead): salvagekit/core/, salvagekit/cli.py, salvagekit/formats/stub.py,
+  salvage, salvage.cmd, docker/, tests/core/, tests/fixtures/,
+  tests/sample_formats.json, tools/ (except tools/fuzz.py), Dockerfile,
   Makefile, README.md, CLAUDE.md, docs/phase-reports/, docs/*/_TEMPLATE.md,
   FORMAT-SPEC.md and FIELD-LOG.md (generated).
-- Teammates: salvage/formats/<format>.py, tests/<format>/, docs/spec/,
+- Teammates: salvagekit/formats/<format>.py, tests/<format>/, docs/spec/,
   docs/log/. Do not edit these unless the task explicitly says so.
-- samples/ and schema/ are read-only.
-- The contract (salvage/core/model.py, plugin.py, reader.py) is frozen after
-  Phase 0. Changes need the lead's approval; never change it silently.
+- kit/ (the organizers' contract, hints, samples and expected outputs) and
+  schema/ are read-only.
+- The contract (salvagekit/core/model.py, plugin.py, reader.py) is frozen
+  (last approved change: Phase 7). Changes need the lead's approval; never
+  change it silently. Decoder names are contract format names (LIBRA-98,
+  LABLOG, VAULT, WKS, WPD, BRAVO, CVT, EBCDIC-DUMP, WAD, PAK).
 
 ## Commands
 - `python tools/task.py test`  run all tests (must pass before handing work back)
-- `python tools/task.py api`   print the public API of salvage.core/formats
+- `python tools/task.py api`   print the public API of salvagekit.core/formats
 - `python tools/task.py run IN OUT`  run the CLI on IN, writing to OUT
 - `python tools/task.py golden [FORMAT]`  golden tests (all formats, or one)
 - `python tools/task.py golden-update FORMAT`  regenerate tests/FORMAT/cases/*.expected.json
 - `python tools/task.py conform [NAME] [--verbose] [--quick]`  decoder
   conformance suite (docs/conformance.md); every decoder must PASS (`test`
-  runs it in quick mode: no samples/, fewer variants)
+  runs it in quick mode: no kit/samples/, fewer variants)
+- `python tools/task.py calibrate [FILE]`  run on kit/samples/ and compare
+  with kit/expected_outputs/ (MATCH or JSON-path diffs; not part of `test`)
 - `python tools/task.py bench [--docker]`  throughput, --jobs 1 vs auto
   (not part of `test`)
 - `python tools/task.py build` / `build-offline`  build the salvage:dev image
@@ -52,8 +63,10 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
 - `python tools/task.py save-base` / `load-base`  base image <-> dist/base-image.tar
 - `python tools/task.py precheck`  release checklist on a clean clone of HEAD
   (commit first)
-- `python -m salvage.core.validate`  show which output/report schemas are
-  active (official in salvage/core/schemas/official/, else provisional)
+- `./salvage IN OUT` / `salvage.cmd IN OUT`  the entry points (what graders run)
+- `python -m salvagekit.core.validate`  show the output/report schemas in use
+  (salvagekit/core/schemas/official/, the only schemas)
+- `python -m salvagekit.core.contract_shapes`  the graded record shapes per format
 - `make <command>` wraps each of these where make exists
   (`make run IN=... OUT=...`, `make golden FORMAT=stub`, `make conform NAME=stub`, ...)
 

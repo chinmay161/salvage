@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: test api run build build-offline docker-run docker-test docker-smoke golden golden-update conform bench docs check-outputs lint-docker save-base load-base precheck
+.PHONY: test api run build build-offline docker-run docker-test docker-smoke golden golden-update conform calibrate bench docs check-outputs lint-docker save-base load-base precheck
 
 test:
 	$(PY) tools/task.py test
@@ -37,6 +37,10 @@ golden-update:
 # make conform [NAME=stub] [ARGS=--verbose]
 conform:
 	$(PY) tools/task.py conform $(NAME) $(ARGS)
+
+# make calibrate [FILE=s01.dat]
+calibrate:
+	$(PY) tools/task.py calibrate $(FILE)
 
 # make bench [ARGS=--docker]
 bench:

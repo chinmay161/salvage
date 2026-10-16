@@ -1,6 +1,6 @@
 """CF-OK: well-behaved (CRC-checked records, encode, resync, damage); must PASS."""
 
-from salvage.core.standalone import run_standalone
+from salvagekit.core.standalone import run_standalone
 from tests.fixtures.conform_formats._base import CrcDecoder
 
 

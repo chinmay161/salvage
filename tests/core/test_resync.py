@@ -1,9 +1,9 @@
 import unittest
 
-from salvage.core import limits
-from salvage.core.model import DamageKind
-from salvage.core.reader import SafeReader
-from salvage.core.resync import ByteView, ResyncResult, resync, resync_damage
+from salvagekit.core import limits
+from salvagekit.core.model import DamageKind
+from salvagekit.core.reader import SafeReader
+from salvagekit.core.resync import ByteView, ResyncResult, resync, resync_damage
 
 MARK = b"REC!"
 
@@ -48,7 +48,7 @@ class ResyncTests(unittest.TestCase):
         self.assertEqual(r.tell(), 12)
         dmg = resync_damage(res, "junk")
         self.assertEqual((dmg.start, dmg.end, dmg.kind, dmg.reason),
-                         (5, 12, DamageKind.UNPARSED, "junk"))
+                         (5, 12, DamageKind.UNPARSED_BYTES, "junk"))
 
     def test_explicit_start_and_step(self):
         data = b"xx" + MARK + b"x" + MARK

@@ -1,7 +1,8 @@
 # Allow-list: the image gets only the code it runs.
 *
-!salvage/
+!salvagekit/
 !vendor/
 !docker/
+!salvage
 **/__pycache__
 **/*.pyc

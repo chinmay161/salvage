@@ -2,7 +2,7 @@ import random
 import unittest
 import zlib
 
-from salvage.core import checksums as cs
+from salvagekit.core import checksums as cs
 
 CHECK = b"123456789"
 

@@ -31,7 +31,7 @@ sorted by date and time; a heading with a bad date or time fails
 
 **Hypothesis:** bytes 2-3 of each record are its length, u16 big-endian.
 
-**Tried:** read them as u16be in `samples/libra98/a.lb9` and jumped that far.
+**Tried:** read them as u16be in `kit/samples/s01.dat` and jumped that far.
 
 **Evidence:** the jump lands exactly on the next `A5 5A` marker 41/41
 times; read as u16le it never does.

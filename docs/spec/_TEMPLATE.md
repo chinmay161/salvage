@@ -15,15 +15,15 @@ FORMAT-SPEC.md and warns about missing sections. Files starting with "_"
 <What the format is, the context hint that came with it, and which samples you studied.>
 
 Example: LIBRA-98 is a record-based library catalogue export (context hint:
-"card catalogue, 1998"). Studied: `samples/libra98/a.lb9` (4,112 bytes),
-`samples/libra98/b.lb9` (truncated, 1,020 bytes).
+"Municipal library circulation desk PC, about 1998"). Studied:
+`kit/samples/s01.dat` (289 bytes) and `kit/samples/s04.dat` (truncated, 259 bytes).
 
 ## Identification
 
 <The magic bytes or probe logic, with offsets, and what probe() scores.>
 
 Example: bytes 0-3 are `4C 42 39 38` ("LB98") → probe 0.9; plus header
-CRC at 0x0E matching → 1.0. Extension `.lb9` is a tie-break hint only.
+CRC at 0x0E matching → 1.0. The extension is a tie-break hint only.
 
 ## Layout
 
@@ -37,7 +37,8 @@ CRC at 0x0E matching → 1.0. Extension `.lb9` is a tie-break hint only.
 
 ## Records
 
-<Record structure, how many there are, and how each record is found.>
+<Record structure, how many there are, how each record is found, and how
+its bytes map to the contract's record fields (salvagekit/core/contract_shapes.py).>
 
 Example: `count` records follow the 16-byte header back to back. Each is
 `A5 5A`, u16be length n, n bytes of Latin-1 text, u16le CRC. Found by
@@ -61,10 +62,12 @@ Example: None.
 
 <What damage the decoder detects, how it recovers, and what it reports as lost.>
 
-Example: a CRC mismatch marks the record `unverified` with CHECKSUM damage
-over its text; a truncated record's missing fields are `lost` with
-TRUNCATED damage to the end of the file; junk between records is skipped
-by resync and reported as UNPARSED.
+Example: a CRC mismatch marks the record `unverified` (output:
+`"verified": false`, `"issues": ["crc_mismatch"]`) with CRC_MISMATCH damage
+over its text, not lossy since the text is kept; a truncated record's
+missing fields are `lost` (null) with TRUNCATED damage to the end of the
+file; junk between records is skipped by resync and reported as
+UNPARSED_BYTES.
 
 ## Open questions
 

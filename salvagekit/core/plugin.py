@@ -10,10 +10,10 @@ import pkgutil
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from salvage.core.model import DecodeResult
+from salvagekit.core.model import DecodeResult
 
 if TYPE_CHECKING:
-    from salvage.core.reader import SafeReader
+    from salvagekit.core.reader import SafeReader
 
 
 class Decoder:
@@ -21,7 +21,10 @@ class Decoder:
 
     Rules for subclasses:
 
-    * ``name`` is unique across all decoders (e.g. "LIBRA-98").
+    * ``name`` is unique across all decoders and is one of the output
+      contract's format names (LIBRA-98, LABLOG, VAULT, WKS, WPD, BRAVO,
+      CVT, EBCDIC-DUMP, WAD, PAK): it is the output's ``format``. Only
+      test-only decoders (e.g. STUB) use other names (conformance C1).
     * ``extensions`` is a weak hint only; never trust it over content.
     * :meth:`probe` must never raise and returns a confidence in 0.0-1.0.
     * :meth:`decode` must never raise; it reads only through the given
@@ -87,7 +90,7 @@ class DiscoveryResult:
     errors: list[str] = field(default_factory=list)
 
 
-def discover_decoders(package: str = "salvage.formats") -> DiscoveryResult:
+def discover_decoders(package: str = "salvagekit.formats") -> DiscoveryResult:
     """Import every public module in ``package`` and collect its decoders.
 
     Modules are visited in name order; names starting with "_" are skipped.

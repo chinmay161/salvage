@@ -1,84 +1,35 @@
 {
-  "confidence": 1.0,
-  "damage": [
-    {
-      "end": 25,
-      "kind": "truncated",
-      "reason": "expected 5 values, file ends after 2",
-      "start": 23
-    }
-  ],
-  "errors": [],
+  "source_file": "truncated.stub",
   "format": "STUB",
-  "members": [],
-  "meta": {
+  "status": "partial",
+  "metadata": {
     "declared_count": 5,
     "decoded_count": 2
   },
   "records": [
     {
-      "fields": [
-        {
-          "evidence": "exact magic match",
-          "length": 13,
-          "name": "magic",
-          "offset": 0,
-          "status": "verified",
-          "value": "53414c564147452d5354554200"
-        },
-        {
-          "evidence": "5 values need 20 bytes but only 10 remain",
-          "length": 2,
-          "name": "count",
-          "offset": 13,
-          "status": "unverified",
-          "value": 5
-        }
-      ],
-      "kind": "header",
-      "offset": 0,
-      "status": "unverified"
+      "magic": "53414c564147452d5354554200",
+      "count": 5,
+      "verified": false,
+      "issues": [
+        "truncated"
+      ]
     },
     {
-      "fields": [
-        {
-          "evidence": "no checksum in format",
-          "length": 4,
-          "name": "value",
-          "offset": 15,
-          "status": "unverified",
-          "value": 100
-        }
-      ],
-      "kind": "value",
-      "offset": 15,
-      "status": "unverified"
+      "value": 100,
+      "verified": false
     },
     {
-      "fields": [
-        {
-          "evidence": "no checksum in format",
-          "length": 4,
-          "name": "value",
-          "offset": 19,
-          "status": "unverified",
-          "value": 200
-        }
-      ],
-      "kind": "value",
-      "offset": 19,
-      "status": "unverified"
+      "value": 200,
+      "verified": false
     }
   ],
-  "schema_version": "provisional-1",
-  "source": {
-    "path": "truncated.stub",
-    "sha256": "b8462380dededcaedb867a7b2859b75f8bdca3cc2a950065764d8234333956dd",
-    "size": 25
-  },
-  "status": "partial",
-  "variant": null,
-  "warnings": [
-    "truncated at offset 23: expected 5 values, file ends after 2"
+  "damage": [
+    {
+      "kind": "truncated",
+      "offset": 23,
+      "detail": "expected 5 values, file ends after 2",
+      "lossy": true
+    }
   ]
 }

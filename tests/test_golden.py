@@ -11,8 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from salvage.core import emit
-from salvage.formats.stub import MAGIC
+from salvagekit.core import emit
+from salvagekit.formats.stub import MAGIC
 from tests import golden
 
 
@@ -51,17 +51,17 @@ class GoldenSelfTests(unittest.TestCase):
 
     def test_wrong_expectation_gives_path_diff(self):
         wrong = json.loads(json.dumps(self.real_output()))
-        wrong["records"][2]["fields"][0]["value"] = 21   # real value is 20
+        wrong["records"][2]["value"] = 21   # real value is 20
         wrong["status"] = "partial"
-        del wrong["meta"]["decoded_count"]
+        del wrong["metadata"]["decoded_count"]
         self.expect("a.stub", wrong)
         problem = golden.check(self.cases)["a.stub"]
         self.assertIsNotNone(problem)
         self.assertEqual(problem.splitlines(), [
             "3 difference(s):",
-            "  meta.decoded_count: expected nothing (unexpected key), got 3",
-            "  records[2].fields[0].value: expected 21, got 20",
-            '  status: expected "partial", got "decoded"',
+            "  metadata.decoded_count: expected nothing (unexpected key), got 3",
+            "  records[2].value: expected 21, got 20",
+            '  status: expected "partial", got "ok"',
         ])
 
     def test_correct_expectation_passes(self):

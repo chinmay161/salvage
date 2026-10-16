@@ -1,9 +1,10 @@
 #!/bin/sh
-# Accept both "IMAGE /salvage IN OUT" and "IMAGE IN OUT"; no arguments shows help.
+# Accepts "IMAGE ./salvage IN OUT", "IMAGE /salvage IN OUT" and "IMAGE IN OUT";
+# no arguments shows help.
 if [ "$#" -eq 0 ]; then
-    exec /salvage --help
+    exec /app/salvage --help
 fi
 case "$1" in
-    /salvage|salvage) shift ;;
+    ./salvage|/salvage|salvage|/app/salvage) shift ;;
 esac
-exec /salvage "$@"
+exec /app/salvage "$@"

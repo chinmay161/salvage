@@ -7,9 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from salvage.core.model import DamageKind, Status
-from salvage.core.reader import SafeReader
-from salvage.formats.stub import MAGIC, StubDecoder
+from salvagekit.core.model import DamageKind, Status
+from salvagekit.core.reader import SafeReader
+from salvagekit.formats.stub import MAGIC, StubDecoder
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -56,9 +56,11 @@ class StubTests(unittest.TestCase):
         values = result.records[1:]
         self.assertEqual(len(values), 2)
         for i, rec in enumerate(values):
-            self.assertEqual(rec.status, Status.UNVERIFIED)
-            self.assertEqual(rec.fields[0].status, Status.UNVERIFIED)
+            # No checksum: at best consistent with the declared count.
+            self.assertEqual(rec.status, Status.CONSISTENT)
+            self.assertEqual(rec.fields[0].status, Status.CONSISTENT)
             self.assertEqual(rec.fields[0].offset, 15 + 4 * i)
+        self.assertEqual(header.issues, [])
 
     def test_truncated(self):
         full = stub_bytes([10, 20, 30])
@@ -66,6 +68,8 @@ class StubTests(unittest.TestCase):
         result = decode(data)
         self.assertEqual(values_of(result), [10, 20])
         self.assertEqual(result.records[0].fields[1].status, Status.UNVERIFIED)
+        self.assertEqual(result.records[0].issues, [DamageKind.TRUNCATED])
+        self.assertEqual({r.status for r in result.records[1:]}, {Status.UNVERIFIED})
         self.assertEqual(len(result.damage), 1)
         dmg = result.damage[0]
         self.assertEqual(dmg.kind, DamageKind.TRUNCATED)
@@ -85,8 +89,8 @@ class StubTests(unittest.TestCase):
         data = stub_bytes([1]) + b"xyz"
         result = decode(data)
         self.assertEqual(values_of(result), [1])
-        self.assertEqual([(d.start, d.end, d.kind) for d in result.damage],
-                         [(19, 22, DamageKind.UNPARSED)])
+        self.assertEqual([(d.start, d.end, d.kind, d.lossy) for d in result.damage],
+                         [(19, 22, DamageKind.UNPARSED_BYTES, False)])
         self.assertEqual(result.validate(len(data)), [])
 
     def test_wrong_magic(self):
@@ -106,7 +110,7 @@ class StubTests(unittest.TestCase):
             path = os.path.join(tmp, "sample.stub")
             with open(path, "wb") as fh:
                 fh.write(stub_bytes([1, 2, 3])[:-1])
-            proc = subprocess.run([sys.executable, "-m", "salvage.formats.stub", path],
+            proc = subprocess.run([sys.executable, "-m", "salvagekit.formats.stub", path],
                                   cwd=ROOT, capture_output=True, text=True, timeout=60)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             out = json.loads(proc.stdout)
@@ -114,13 +118,13 @@ class StubTests(unittest.TestCase):
             self.assertEqual(out["damage"][0]["kind"], "truncated")
 
             missing = subprocess.run(
-                [sys.executable, "-m", "salvage.formats.stub", os.path.join(tmp, "nope")],
+                [sys.executable, "-m", "salvagekit.formats.stub", os.path.join(tmp, "nope")],
                 cwd=ROOT, capture_output=True, text=True, timeout=60)
             self.assertEqual(missing.returncode, 0)
             self.assertEqual(missing.stdout, "")
             self.assertIn("cannot read", missing.stderr)
 
-            usage = subprocess.run([sys.executable, "-m", "salvage.formats.stub"],
+            usage = subprocess.run([sys.executable, "-m", "salvagekit.formats.stub"],
                                    cwd=ROOT, capture_output=True, text=True, timeout=60)
             self.assertEqual(usage.returncode, 0)
             self.assertIn("usage", usage.stderr)

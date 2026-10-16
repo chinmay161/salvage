@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from salvage.core.limits import AMBIGUITY_MARGIN, PROBE_THRESHOLD
-from salvage.core.plugin import Decoder, safe_probe
+from salvagekit.core.limits import AMBIGUITY_MARGIN, PROBE_THRESHOLD
+from salvagekit.core.plugin import Decoder, safe_probe
 
 _EPS = 1e-9  # float slack when comparing scores against thresholds
 

@@ -18,8 +18,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from salvage.core import isolate, pipeline, validate, walk
-from salvage.formats.stub import MAGIC
+from salvagekit.core import isolate, pipeline, validate, walk
+from salvagekit.formats.stub import MAGIC
 from tests.pipeline_helpers import run_checked
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,6 +51,11 @@ def load_report(out):
         return json.load(fh)
 
 
+def entries(rep):
+    """The diagnostics entries (input, output, status, errors, ...) of a report."""
+    return rep["diagnostics"]["files"]
+
+
 def json_outputs(out):
     found = set()
     for dirpath, _, names in os.walk(out):
@@ -66,7 +71,7 @@ def json_outputs(out):
 class LimitOverrideTests(unittest.TestCase):
     def limits(self, value, code="print(l.MAX_FILE_BYTES, l.MAX_RECORDS)"):
         return subprocess.run(
-            [sys.executable, "-c", f"import salvage.core.limits as l; {code}"],
+            [sys.executable, "-c", f"import salvagekit.core.limits as l; {code}"],
             cwd=ROOT, env=env(SALVAGE_LIMITS=value), capture_output=True, text=True,
             timeout=60)
 
@@ -91,11 +96,11 @@ class LimitOverrideTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
             make_tree(inp, {"a.stub": MAGIC + struct.pack("<H5I", 5, 1, 2, 3, 4, 5)})
-            proc = subprocess.run([sys.executable, "-m", "salvage.cli", "--jobs", "1", inp, out],
+            proc = subprocess.run([sys.executable, "-m", "salvagekit.cli", "--jobs", "1", inp, out],
                                   cwd=ROOT, env=env(SALVAGE_LIMITS='{"MAX_RECORDS": 2}'),
                                   capture_output=True, text=True, timeout=60)
             self.assertEqual(proc.returncode, 0)
-            entry = load_report(out)["files"][0]
+            entry = entries(load_report(out))[0]
             self.assertEqual(entry["status"], "partial")
             self.assertIn("output capped at 2 records", entry["warnings"])
 
@@ -109,12 +114,12 @@ class MemoryCapTests(unittest.TestCase):
             inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
             make_tree(inp, {"a.t": b"T-MEMHOG payload", "b.stub": CLEAN})
             rep = run_checked(inp, out, decoder_package=HOSTILE, timeout=60, jobs=1)
-            hog, after = rep["files"]
+            hog, after = entries(rep)
             self.assertEqual((hog["status"], hog["format"]), ("failed", "T-MEMHOG"))
             self.assertEqual(hog["errors"], ["memory limit (2048 MiB)"])
             self.assertEqual(hog["attempts"], [{"format": "T-MEMHOG",
                                                 "outcome": "error: memory limit"}])
-            self.assertEqual(after["status"], "decoded")
+            self.assertEqual(after["status"], "ok")
 
     def test_memory_error_outcome_in_process(self):
         # Any OS: a MemoryError from decode is "error: memory limit", and with
@@ -145,10 +150,10 @@ class StubbornWorkerTests(unittest.TestCase):
             start = time.monotonic()
             rep = run_checked(inp, out, decoder_package=HOSTILE, timeout=1, jobs=2)
             took = time.monotonic() - start
-            stubborn, other = rep["files"]
+            stubborn, other = entries(rep)
             self.assertEqual(stubborn["errors"], ["timeout after 1s (during decode)"])
             self.assertEqual(stubborn["status"], "failed")
-            self.assertEqual(other["status"], "decoded")
+            self.assertEqual(other["status"], "ok")
             # deadline 1 s + SIGTERM grace 2 s, then SIGKILL; never a hang
             self.assertLess(took, 30)
 
@@ -169,7 +174,7 @@ class InterruptTests(unittest.TestCase):
                 stderr=subprocess.PIPE)
             try:
                 first = proc.stderr.readline()       # one file finished: partway through
-                self.assertTrue(first.startswith(b"decoded T-SLOW"), first)
+                self.assertTrue(first.startswith(b"partial T-SLOW"), first)  # UNVERIFIED
                 proc.send_signal(signal.SIGTERM)
                 stdout, stderr = proc.communicate(timeout=30)
             finally:
@@ -181,10 +186,11 @@ class InterruptTests(unittest.TestCase):
             self.assertEqual(validate.errors("report", rep), [])
             done = len(rep["files"])
             self.assertTrue(1 <= done < total, done)
-            self.assertEqual(rep["errors"], [f"interrupted: {total - done} files not processed"])
+            self.assertEqual(rep["diagnostics"]["errors"],
+                             [f"interrupted: {total - done} files not processed"])
             # Only finished files have an output; nothing is invented for the rest.
-            self.assertEqual(json_outputs(out), {e["output"] for e in rep["files"]})
-            self.assertTrue(all(e["status"] == "decoded" for e in rep["files"]))
+            self.assertEqual(json_outputs(out), {e["output"] for e in entries(rep)})
+            self.assertTrue(all(r["status"] == "partial" for r in rep["files"]))
             self.assertIn(b"salvage: ", stdout)
 
 
@@ -206,8 +212,9 @@ class InProcessInterruptTests(unittest.TestCase):
             self.assertIs(signal.getsignal(signal.SIGTERM), before)   # handler restored
             done = len(rep["files"])
             self.assertTrue(1 <= done < 6, done)
-            self.assertEqual(rep["errors"], [f"interrupted: {6 - done} files not processed"])
-            self.assertEqual(json_outputs(out), {e["output"] for e in rep["files"]})
+            self.assertEqual(rep["diagnostics"]["errors"],
+                             [f"interrupted: {6 - done} files not processed"])
+            self.assertEqual(json_outputs(out), {e["output"] for e in entries(rep)})
             self.assertEqual(load_report(out), rep)
 
 
@@ -219,7 +226,7 @@ class ConsoleEncodingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
             make_tree(inp, {n: CLEAN for n in names})
-            proc = subprocess.run([sys.executable, "-m", "salvage.cli", "--jobs", "1", inp, out],
+            proc = subprocess.run([sys.executable, "-m", "salvagekit.cli", "--jobs", "1", inp, out],
                                   cwd=ROOT, env=env(PYTHONIOENCODING="ascii"),
                                   capture_output=True, timeout=60)
             self.assertEqual(proc.returncode, 0)
@@ -230,7 +237,7 @@ class ConsoleEncodingTests(unittest.TestCase):
             self.assertTrue(all("?" in line for line in lines), lines)
             self.assertIn(b"3 files", proc.stdout)
             rep = load_report(out)
-            self.assertEqual(sorted(e["input"] for e in rep["files"]), sorted(names))
+            self.assertEqual(sorted(r["file"] for r in rep["files"]), sorted(names))
 
 
 # -- B6 ------------------------------------------------------------------------
@@ -249,14 +256,16 @@ class FileSystemEdgeTests(unittest.TestCase):
                            jobs=kw.pop("jobs", 2), **kw)
 
     def test_spaces_emoji_and_devanagari_names(self):
-        names = ["with space.stub", "sub dir/😀.stub", "हिन्दी/फ़ाइल.stub"]
+        names = ["with space.stub", "फ़ाइल.stub", "😀.stub"]   # sorted = walk order
         make_tree(self.inp, {n: CLEAN for n in names})
+        make_tree(self.inp, {"हिन्दी dir/x.stub": CLEAN})       # a subfolder: skipped
         rep = self.run_stub()
-        self.assertEqual([e["input"] for e in rep["files"]], names)   # walk order
-        for e in rep["files"]:
-            self.assertEqual((e["status"], e["output"]), ("decoded", e["input"] + ".json"))
-            with open(os.path.join(self.out, *e["output"].split("/")), encoding="utf-8") as fh:
-                self.assertEqual(json.load(fh)["source"]["path"], e["input"])
+        self.assertEqual([r["file"] for r in rep["files"]], names)
+        for e in entries(rep):
+            self.assertEqual((e["status"], e["output"]), ("ok", e["input"] + ".json"))
+            with open(os.path.join(self.out, e["output"]), encoding="utf-8") as fh:
+                self.assertEqual(json.load(fh)["source_file"], e["input"])
+        self.assertEqual([s["input"] for s in rep["diagnostics"]["skipped"]], ["हिन्दी dir"])
 
     def test_names_differing_only_by_case(self):
         make_tree(self.inp, {"A.stub": CLEAN})
@@ -265,29 +274,31 @@ class FileSystemEdgeTests(unittest.TestCase):
                 fh.write(CLEAN + b"\x00")
         except FileExistsError:
             self.skipTest("case-insensitive file system: cannot create A.stub and a.stub")
+        # C2: the output folder is case-sensitive too, so the names stay exact.
         rep = self.run_stub()
-        self.assertEqual([(e["input"], e["output"]) for e in rep["files"]],
-                         [("A.stub", "A.stub.json"), ("a.stub", "a.stub~2.json")])
-        self.assertEqual(json_outputs(self.out), {"A.stub.json", "a.stub~2.json"})
+        self.assertEqual([(e["input"], e["output"]) for e in entries(rep)],
+                         [("A.stub", "A.stub.json"), ("a.stub", "a.stub.json")])
+        self.assertEqual(json_outputs(self.out), {"A.stub.json", "a.stub.json"})
+        # Writing to a case-insensitive output folder renames the second one.
+        with mock.patch.object(pipeline.emit, "is_case_insensitive", lambda folder: True):
+            rep = run_checked(self.inp, os.path.join(self.tmp, "ci"),
+                              decoder_package=HOSTILE, jobs=1)
+        self.assertEqual([e["output"] for e in entries(rep)], ["A.stub.json", "a.stub~2.json"])
 
-    def test_tree_60_levels_deep(self):
+    def test_tree_60_levels_deep_is_never_entered(self):
         # One-letter folder names keep the path short enough for Windows'
         # 260-character limit when the temp folder is not too deep.
         rel = "/".join("d" * 60) + "/deep.stub"
         try:
-            make_tree(self.inp, {rel: CLEAN})
+            make_tree(self.inp, {rel: CLEAN, "top.stub": CLEAN})
         except OSError as exc:
             self.skipTest(f"path length limit hit creating a 60-level tree "
                           f"({len(self.inp) + len(rel)} chars): {exc.strerror or exc}")
         rep = self.run_stub()
-        entry = rep["files"][0]
-        self.assertEqual(entry["input"], rel)
-        if entry["output"] is None:
-            # Windows without long paths: recorded honestly, never a crash.
-            self.assertTrue(entry["errors"][-1].startswith("cannot write output"), entry)
-            self.skipTest("path length limit hit writing the output: "
-                          + entry["errors"][-1])
-        self.assertEqual((entry["status"], entry["output"]), ("decoded", rel + ".json"))
+        self.assertEqual([(r["file"], r["status"]) for r in rep["files"]], [("top.stub", "ok")])
+        self.assertEqual(rep["diagnostics"]["skipped"],
+                         [{"input": "d", "reason": walk.DIRECTORY}])
+        self.assertEqual(json_outputs(self.out), {"top.stub.json"})
 
     def test_file_deleted_between_walk_and_read(self):
         make_tree(self.inp, {"a.stub": CLEAN, "gone.stub": CLEAN})
@@ -299,8 +310,8 @@ class FileSystemEdgeTests(unittest.TestCase):
             return found
         with mock.patch.object(pipeline.walk, "list_inputs", list_then_delete):
             rep = self.run_stub()
-        a, gone = rep["files"]
-        self.assertEqual(a["status"], "decoded")
+        a, gone = entries(rep)
+        self.assertEqual(a["status"], "ok")
         self.assertEqual((gone["status"], gone["errors"]), ("failed", ["file disappeared"]))
         self.assertIsNone(gone["sha256"])
 
@@ -313,7 +324,7 @@ class FileSystemEdgeTests(unittest.TestCase):
         make_tree(self.inp, {"a.stub": CLEAN, "b.stub": CLEAN})
         os.makedirs(os.path.join(self.out, "a.stub.json", "keep"))
         rep = self.run_stub()
-        a, b = rep["files"]
+        a, b = entries(rep)
         self.assertIsNone(a["output"])
         self.assertEqual(a["errors"], ["cannot write output: output path is an existing folder"])
         self.assertEqual(b["output"], "b.stub.json")
@@ -325,24 +336,25 @@ class FileSystemEdgeTests(unittest.TestCase):
         make_tree(self.out, {"old.txt": b"keep me", "sub/older.bin": b"x",
                              "a.stub.json": b"stale"})
         rep = self.run_stub()
-        self.assertEqual(rep["warnings"], ["output dir was not empty: 3 existing files"])
+        self.assertEqual(rep["diagnostics"]["warnings"],
+                         ["output dir was not empty: 3 existing files"])
         with open(os.path.join(self.out, "old.txt"), "rb") as fh:
             self.assertEqual(fh.read(), b"keep me")
         self.assertTrue(os.path.isfile(os.path.join(self.out, "sub", "older.bin")))
         with open(os.path.join(self.out, "a.stub.json"), encoding="utf-8") as fh:
-            self.assertEqual(json.load(fh)["status"], "decoded")   # ours: overwritten
+            self.assertEqual(json.load(fh)["status"], "ok")   # ours: overwritten
         self.assertEqual(validate.errors("report", load_report(self.out)), [])
         # A fresh output dir gets no warning.
         fresh = run_checked(self.inp, os.path.join(self.tmp, "fresh"),
                             decoder_package=HOSTILE, jobs=1)
-        self.assertEqual(fresh["warnings"], [])
+        self.assertEqual(fresh["diagnostics"]["warnings"], [])
 
     def test_too_large_via_salvage_limits_is_hashed_never_decoded(self):
         make_tree(self.inp, {"big.bin": b"\x00" * (2 * 1024 * 1024), "small.stub": CLEAN})
         script = (
             "import json, sys\n"
-            "from salvage import cli\n"
-            "from salvage.core import isolate, pipeline\n"
+            "from salvagekit import cli\n"
+            "from salvagekit.core import isolate, pipeline\n"
             "seen = []\n"
             "real_sha, real_worker = pipeline.sha256_file, isolate.Worker\n"
             "def sha(path):\n"
@@ -361,11 +373,11 @@ class FileSystemEdgeTests(unittest.TestCase):
         # big.bin is hashed (streamed) but never given to a worker.
         self.assertEqual([os.path.basename(p) for p in seen],
                          ["big.bin", "small.stub", "small.stub"])
-        big, small = load_report(self.out)["files"]
+        big, small = entries(load_report(self.out))
         self.assertEqual((big["status"], big["sha256"]),
                          ("failed", hashlib.sha256(bytes(2 * 1024 * 1024)).hexdigest()))
         self.assertEqual(big["errors"], ["too large (2097152 bytes > 1048576)"])
-        self.assertEqual(small["status"], "decoded")
+        self.assertEqual(small["status"], "ok")
 
 
 if __name__ == "__main__":

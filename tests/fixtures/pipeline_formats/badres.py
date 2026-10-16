@@ -1,6 +1,6 @@
 """BADRES: returns a Field whose offset lies beyond the end of the file."""
 
-from salvage.core.model import DecodeResult, Field, Record, Status
+from salvagekit.core.model import DecodeResult, Field, Record, Status
 from tests.fixtures.pipeline_formats._base import MagicDecoder
 
 

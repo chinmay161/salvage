@@ -2,7 +2,7 @@
 
 import multiprocessing
 
-from salvage.core import pipeline
+from salvagekit.core import pipeline
 
 
 def run_checked(*args, jobs, **kwargs):

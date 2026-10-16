@@ -6,8 +6,8 @@ import hashlib
 import math
 from collections import Counter
 
-from salvage.core.identify import Ranked
-from salvage.core.model import DecodeResult
+from salvagekit.core.identify import Ranked
+from salvagekit.core.model import DecodeResult
 
 _MB = 1024 * 1024
 # Above this size entropy is computed on a fixed sample, not the whole file.
@@ -50,13 +50,15 @@ def entropy(data: bytes) -> float:
 
 
 def unknown(data: bytes, ranked: list[Ranked]) -> DecodeResult:
-    """Format "unknown", confidence 0.0, no records; meta describes the bytes.
+    """Format "UNKNOWN", confidence 0.0, no records; meta describes the bytes.
 
     meta: size, sha256, entropy, entropy_sampled, top_candidates (best 3 of
-    ``ranked``). Never carves strings or guesses records.
+    ``ranked``). It goes to report.json diagnostics (``bytes``), never to
+    the per-file output, whose metadata stays {}. Never carves strings or
+    guesses records.
     """
     return DecodeResult(
-        format="unknown",
+        format="UNKNOWN",
         confidence=0.0,
         meta={
             "size": len(data),

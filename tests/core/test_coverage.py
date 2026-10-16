@@ -1,9 +1,9 @@
 import struct
 import unittest
 
-from salvage.core.coverage import coverage
-from salvage.core.reader import SafeReader
-from salvage.formats.stub import MAGIC, StubDecoder
+from salvagekit.core.coverage import coverage
+from salvagekit.core.reader import SafeReader
+from salvagekit.formats.stub import MAGIC, StubDecoder
 
 
 class CoverageTests(unittest.TestCase):

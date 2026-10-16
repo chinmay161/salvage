@@ -2,7 +2,7 @@
 
 ## Summary
 
-Library catalogue export. See [the decoder](../../salvage/formats/libra98.py).
+Library catalogue export. See [the decoder](../../salvagekit/formats/libra98.py).
 
 ## Identification
 

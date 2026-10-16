@@ -2,7 +2,7 @@ import json
 import unittest
 from enum import Enum
 
-from salvage.core.model import (Damage, DamageKind, DecodeResult, Field, Record,
+from salvagekit.core.model import (Damage, DamageKind, DecodeResult, Field, Record,
                                 Status, json_safe)
 
 
@@ -38,8 +38,22 @@ class StatusTests(unittest.TestCase):
                          Status.UNVERIFIED)
 
     def test_damage_kind_values(self):
-        self.assertEqual({k.value for k in DamageKind},
-                         {"truncated", "checksum", "bounds", "unparsed", "other"})
+        # Exactly the output contract's vocabulary, in its order.
+        self.assertEqual([k.value for k in DamageKind], [
+            "truncated", "crc_mismatch", "checksum_mismatch", "bad_length", "unparsed_bytes",
+            "count_mismatch", "invalid_value", "oob_pointer", "index_missing",
+            "header_checksum", "encrypted", "unknown_record"])
+
+    def test_damage_kinds_match_the_official_schemas(self):
+        import os
+        from salvagekit.core import validate
+        kinds = [k.value for k in DamageKind]
+        for rel in validate.SCHEMA_FILES.values():
+            with open(os.path.join(validate.SCHEMA_DIR, *rel.split("/")),
+                      encoding="utf-8") as fh:
+                schema = json.load(fh)
+            found = schema["$defs"].get("kind") or schema["$defs"]["damage"]["properties"]["kind"]
+            self.assertEqual(found["enum"], kinds, rel)
 
 
 class JsonSafeTests(unittest.TestCase):
@@ -67,7 +81,7 @@ class JsonSafeTests(unittest.TestCase):
             RED = 1
         self.assertEqual(json_safe(Status.VERIFIED), "verified")
         self.assertIs(type(json_safe(Status.VERIFIED)), str)
-        self.assertEqual(json_safe(DamageKind.CHECKSUM), "checksum")
+        self.assertEqual(json_safe(DamageKind.CRC_MISMATCH), "crc_mismatch")
         self.assertEqual(json_safe(Color.RED), 1)
 
     def test_unserializable(self):
@@ -100,7 +114,8 @@ class ToDictTests(unittest.TestCase):
     def test_shape(self):
         d = sample_result().to_dict()
         self.assertEqual(list(d), ["format", "confidence", "records", "members", "damage",
-                                   "meta", "warnings", "name"])
+                                   "meta", "warnings", "name", "unsupported"])
+        self.assertEqual(list(d["records"][0]), ["offset", "status", "kind", "fields", "issues"])
         f = d["records"][0]["fields"][0]
         self.assertEqual(list(f), ["name", "value", "offset", "length", "status", "evidence"])
         self.assertEqual(f["value"], "abcd")
@@ -108,7 +123,7 @@ class ToDictTests(unittest.TestCase):
         self.assertIs(type(f["status"]), str)
         self.assertEqual(d["records"][0]["fields"][1]["value"], "nan")
         self.assertEqual(d["damage"][0], {"start": 6, "end": 10, "kind": "truncated",
-                                          "reason": "short"})
+                                          "reason": "short", "lossy": True})
         self.assertEqual(d["members"][0]["name"], "a.txt")
         self.assertEqual(d["meta"], {"k": [1, 2], "3": "three"})
         json.dumps(d, allow_nan=False)
@@ -152,7 +167,8 @@ class ValidateTests(unittest.TestCase):
     def test_damage_range(self):
         for start, end in [(-1, 2), (5, 4), (0, 11)]:
             with self.subTest(start=start, end=end):
-                r = DecodeResult("X", 1.0, damage=[Damage(start, end, DamageKind.OTHER, "")])
+                r = DecodeResult("X", 1.0, damage=[Damage(start, end, DamageKind.BAD_LENGTH,
+                                                          "")])
                 self.assertOneProblem(r, 10, "damage[0]")
 
     def test_status_must_be_member(self):
@@ -161,6 +177,34 @@ class ValidateTests(unittest.TestCase):
         r = DecodeResult("X", 1.0, records=[Record(0, Status.LOST, fields=[
             Field("a", 1, 0, 1, "bogus")])])
         self.assertOneProblem(r, 10, "status")
+
+    def test_duplicate_and_reserved_field_names(self):
+        # B5: a record becomes one flat object, so its field names must be unique.
+        def rec(*names):
+            return DecodeResult("X", 1.0, records=[Record(0, Status.VERIFIED, fields=[
+                Field(n, 1, 0, 1, Status.VERIFIED) for n in names])])
+        self.assertEqual(rec("a", "b").validate(10), [])
+        self.assertOneProblem(rec("a", "b", "a"), 10, "duplicate field name 'a'")
+        self.assertOneProblem(rec("verified"), 10, "'verified' is reserved")
+        self.assertOneProblem(rec("issues"), 10, "'issues' is reserved")
+        self.assertOneProblem(rec(7), 10, "fields[0].name: not a string")
+
+    def test_issues_must_be_damage_kinds(self):
+        good = Record(0, Status.UNVERIFIED, issues=[DamageKind.TRUNCATED])
+        self.assertEqual(DecodeResult("X", 1.0, records=[good]).validate(10), [])
+        bad = Record(0, Status.UNVERIFIED, issues=[DamageKind.TRUNCATED, "truncated"])
+        self.assertOneProblem(DecodeResult("X", 1.0, records=[bad]), 10,
+                              "records[0].issues[1]: 'truncated' is not a DamageKind member")
+        self.assertOneProblem(DecodeResult("X", 1.0, records=[
+            Record(0, Status.LOST, issues="truncated")]), 10, "issues: not a list")
+
+    def test_lossy_and_unsupported_are_bools(self):
+        self.assertOneProblem(DecodeResult("X", 1.0, damage=[
+            Damage(0, 1, DamageKind.ENCRYPTED, "", lossy=1)]), 10, "lossy: not a bool")
+        self.assertOneProblem(DecodeResult("X", 1.0, unsupported="yes"), 10,
+                              "unsupported: not a bool")
+        self.assertEqual(DecodeResult("X", 1.0, unsupported=True, damage=[
+            Damage(0, 10, DamageKind.ENCRYPTED, "password", lossy=True)]).validate(10), [])
 
     def test_recurses_into_members(self):
         inner = DecodeResult("IN", 2.0)

@@ -1,0 +1,34 @@
+#!/bin/sh
+# Salvage entry point: ./salvage <input_dir> <output_dir>   (always exits 0)
+#
+# Runs `python3 -m salvagekit.cli` with this script's own folder (the repo
+# root, or /app in the image) first on PYTHONPATH, so it works from any
+# working directory. Needs Python 3.10 or newer.
+
+self=$0
+while [ -L "$self" ]; do                 # called through a symlink (e.g. /salvage)
+    link=$(readlink -- "$self") || break
+    case $link in
+        /*) self=$link ;;
+        *) self=$(dirname -- "$self")/$link ;;
+    esac
+done
+here=$(CDPATH= cd -- "$(dirname -- "$self")" 2>/dev/null && pwd -P)
+if [ -z "$here" ]; then
+    echo "salvage: error: cannot find the folder this script is in" >&2
+    exit 0
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "salvage: error: python3 was not found; Salvage needs Python 3.10 or newer" >&2
+    exit 0
+fi
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+    echo "salvage: error: Salvage needs Python 3.10 or newer; python3 is" \
+        "$(python3 -V 2>&1 || echo 'unusable')" >&2
+    exit 0
+fi
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+# exec: python gets SIGTERM/SIGINT directly (docker stop, Ctrl-C); the CLI
+# itself always exits 0.
+exec python3 -m salvagekit.cli "$@"

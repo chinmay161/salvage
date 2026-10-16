@@ -1,7 +1,7 @@
 import sys
 import unittest
 
-from salvage.core.plugin import Decoder, DiscoveryResult, discover_decoders, safe_probe
+from salvagekit.core.plugin import Decoder, DiscoveryResult, discover_decoders, safe_probe
 
 FAKE = "tests.fixtures.fake_formats"
 

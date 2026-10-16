@@ -32,7 +32,8 @@ from pathlib import Path
 
 # Section order of FORMAT-SPEC.md and tie-break order of FIELD-LOG.md (by
 # module name). Modules not listed come after these, alphabetically.
-FORMAT_ORDER = ("libra98", "lablog", "vault", "wks", "wpd", "bravo", "cvt", "wad", "pak")
+FORMAT_ORDER = ("libra98", "lablog", "vault", "wks", "wpd", "bravo", "cvt", "ebcdic_dump", "wad",
+                "pak")
 EXCLUDED = frozenset({"stub"})   # test-only formats, never documented
 
 SPEC_SECTIONS = ("Summary", "Identification", "Layout", "Records", "Checksums",
@@ -180,7 +181,7 @@ def check_spec(rel: str, text: str, info: FormatInfo | None, probs: Problems) ->
     heads = headings(text)
     if info is None:
         probs.warnings.append(f"{rel}: no decoder found for this module "
-                              f"(salvage/formats/{Path(rel).stem}.py)")
+                              f"(salvagekit/formats/{Path(rel).stem}.py)")
     elif not heads or heads[0][1] != 1 or heads[0][2] != info.name:
         first = f"'{'#' * heads[0][1]} {heads[0][2]}'" if heads else "none"
         probs.warnings.append(f"{rel}: first heading must be '# {info.name}' "
@@ -375,12 +376,12 @@ def replace_table(readme: str, table: str, probs: Problems) -> str:
 
 # -- driver ------------------------------------------------------------------
 
-def discover(package: str = "salvage.formats", probs: Problems | None = None
+def discover(package: str = "salvagekit.formats", probs: Problems | None = None
              ) -> dict[str, FormatInfo]:
     """Decoders in ``package`` by module short name (import errors -> warnings)."""
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from salvage.core.plugin import discover_decoders
+    from salvagekit.core.plugin import discover_decoders
 
     found = discover_decoders(package)
     if probs is not None:

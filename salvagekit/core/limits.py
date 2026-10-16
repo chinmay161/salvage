@@ -51,7 +51,7 @@ MAX_DECOMPRESSED = 256 * 1024 * 1024
 # enforced on Windows (no `resource` module); see docs/output-format.md.
 MAX_WORKER_MEMORY = 2 * 1024 * 1024 * 1024
 
-# Default number of bytes salvage.core.resync.resync() scans for the next
+# Default number of bytes salvagekit.core.resync.resync() scans for the next
 # valid record start before giving up.
 MAX_RESYNC_SCAN = 16 * 1024 * 1024
 

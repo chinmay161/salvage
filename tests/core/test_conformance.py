@@ -1,4 +1,4 @@
-"""Merge gate: every real decoder in salvage/formats/ must pass the conformance suite.
+"""Merge gate: every real decoder in salvagekit/formats/ must pass the conformance suite.
 
 A teammate's decoder that FAILs any check (docs/conformance.md) breaks
 ``python tools/task.py test`` here. The gate runs in quick mode (golden
@@ -17,7 +17,7 @@ class RealPackageTests(unittest.TestCase):
     def test_every_decoder_passes(self):
         reports = conformance.run_conformance(quick=True)
         lines = conformance.format_lines(reports, verbose=True)
-        self.assertTrue(reports, "no decoders found in salvage.formats")
+        self.assertTrue(reports, "no decoders found in salvagekit.formats")
         failed = [r.name for r in reports if r.verdict != "PASS"]
         self.assertEqual(failed, [], "conformance FAIL:\n" + "\n".join(lines))
         self.assertIn("STUB", [r.name for r in reports])

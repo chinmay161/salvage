@@ -3,7 +3,7 @@ import random
 import struct
 import unittest
 
-from salvage.core.reader import ReaderEvent, SafeReader
+from salvagekit.core.reader import ReaderEvent, SafeReader
 
 
 class ReadTypeTests(unittest.TestCase):

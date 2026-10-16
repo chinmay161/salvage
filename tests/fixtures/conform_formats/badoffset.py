@@ -1,6 +1,6 @@
 """CF-BADOFFSET: a cut-off record keeps its declared length, past the end (expected: C4)."""
 
-from salvage.core.model import Field, Record, Status
+from salvagekit.core.model import Field, Record, Status
 from tests.fixtures.conform_formats._base import CrcDecoder
 
 

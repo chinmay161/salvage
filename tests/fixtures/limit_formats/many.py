@@ -1,15 +1,17 @@
 """MANY: 5 top-level records plus 3 members, each with 4 records and 1 nested member
-holding 2 records. Totals: 5 + 3*4 + 3*2 = 23 records, 3 + 3 = 6 members."""
+holding 2 records. Totals: 5 + 3*4 + 3*2 = 23 records, 3 + 3 = 6 members.
+Every record is CONSISTENT, so an uncapped file is "ok" and only a cap makes it
+"partial"."""
 
-from salvage.core.model import DecodeResult, Field, Record, Status
-from salvage.core.plugin import Decoder
+from salvagekit.core.model import DecodeResult, Field, Record, Status
+from salvagekit.core.plugin import Decoder
 
 MAGIC = b"T-MANY"
 
 
 def _records(n, tag):
-    return [Record(offset=0, status=Status.UNVERIFIED, kind=tag,
-                   fields=[Field("i", i, 0, 1, Status.UNVERIFIED)]) for i in range(n)]
+    return [Record(offset=0, status=Status.CONSISTENT, kind=tag,
+                   fields=[Field("i", i, 0, 1, Status.CONSISTENT)]) for i in range(n)]
 
 
 class ManyDecoder(Decoder):

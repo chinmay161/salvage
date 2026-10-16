@@ -1,4 +1,5 @@
-"""Salvage command-line entry point: ``python -m salvage.cli [options] <input_dir> <output_dir>``.
+"""Salvage command-line entry point: ``./salvage [options] <input_dir> <output_dir>``
+(the repo-root script runs ``python3 -m salvagekit.cli``).
 
 Always exits 0. stdout gets one summary line; stderr gets one line per file
 ("<status> <format> <input>", in completion order) plus any errors.
@@ -10,12 +11,13 @@ import os
 import sys
 from typing import Any, TextIO
 
-from salvage import __version__
+from salvagekit import __version__
 
-USAGE = """usage: python -m salvage.cli [--jobs N] [--stats] <input_dir> <output_dir>
+USAGE = """usage: ./salvage [--jobs N] [--stats] <input_dir> <output_dir>
 
-Identify and decode every file under <input_dir>; write one JSON per file
-plus report.json to <output_dir>. Always exits with status 0.
+Identify and decode every file directly in <input_dir> (subfolders are
+skipped); write <file name>.json per file plus report.json to <output_dir>.
+Always exits with status 0.
 
 options:
   -h, --help    show this help
@@ -98,8 +100,9 @@ def main(argv: list[str] | None = None) -> int:
     """Run the CLI. Always returns 0; only KeyboardInterrupt propagates.
 
     During the run itself SIGINT/SIGTERM do not raise: the pipeline stops,
-    writes report.json and returns (see :func:`salvage.core.pipeline.run`).
+    writes report.json and returns (see :func:`salvagekit.core.pipeline.run`).
     """
+    from salvagekit.core.report import FILE_STATUSES
     _reconfigure_streams()
     try:
         args = list(sys.argv[1:] if argv is None else argv)
@@ -116,22 +119,24 @@ def main(argv: list[str] | None = None) -> int:
             _say(USAGE.rstrip("\n"), sys.stderr)
             return 0
 
-        from salvage.core import pipeline
+        from salvagekit.core import pipeline
         stats: dict[str, Any] = {}
         rep = pipeline.run(paths[0], paths[1], progress=_file_line, stats=stats,
                            jobs=pipeline.default_jobs() if jobs is None else jobs)
-        for err in rep.get("errors", []):
+        diag = rep.get("diagnostics", {})
+        for err in diag.get("errors", []):
             _say(f"error: {err}", sys.stderr)
-        for warning in rep.get("warnings", []):
+        for warning in diag.get("warnings", []):
             _say(f"warning: {warning}", sys.stderr)
         if want_stats:
             _say(f"stats: jobs={stats.get('jobs')} peak_workers={stats.get('peak_workers')} "
                  f"files={stats.get('files')}", sys.stderr)
-        s = rep.get("summary", {})
-        _say(f"salvage: {s.get('files', 0)} files: {s.get('decoded', 0)} decoded, "
-             f"{s.get('partial', 0)} partial, {s.get('unknown', 0)} unknown, "
-             f"{s.get('failed', 0)} failed; {s.get('skipped', 0)} skipped; "
-             f"{len(rep.get('errors', []))} errors", sys.stdout)
+        totals = rep.get("totals", {})
+        summary = diag.get("summary", {})
+        counts = ", ".join(f"{totals.get(s, 0)} {s}" for s in FILE_STATUSES)
+        _say(f"salvage: {summary.get('files', 0)} files: {counts}; "
+             f"{summary.get('skipped', 0)} skipped; "
+             f"{len(diag.get('errors', []))} errors", sys.stdout)
     except KeyboardInterrupt:
         raise
     except BaseException as exc:  # noqa: BLE001 - the CLI never fails

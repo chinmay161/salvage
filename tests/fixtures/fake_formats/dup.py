@@ -1,7 +1,7 @@
 """Fixture: a second decoder that reuses the name GOOD."""
 
-from salvage.core.model import DecodeResult
-from salvage.core.plugin import Decoder
+from salvagekit.core.model import DecodeResult
+from salvagekit.core.plugin import Decoder
 
 
 class DupDecoder(Decoder):

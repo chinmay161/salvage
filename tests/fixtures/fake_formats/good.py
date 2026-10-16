@@ -1,7 +1,7 @@
 """Fixture: a valid decoder named GOOD."""
 
-from salvage.core.model import DecodeResult
-from salvage.core.plugin import Decoder
+from salvagekit.core.model import DecodeResult
+from salvagekit.core.plugin import Decoder
 
 
 class GoodDecoder(Decoder):

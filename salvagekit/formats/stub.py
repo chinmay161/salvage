@@ -2,18 +2,19 @@
 
 Layout: magic b"SALVAGE-STUB\\x00" (13 bytes), u16le count, then count x
 u32le values. No real file starts with this magic, so it is harmless in
-production.
+production. A test-only decoder: its name "STUB" is not a contract format
+name, and its records (a header, then one per value) are not a contract shape.
 """
 
 from __future__ import annotations
 
 import struct
 
-from salvage.core.model import (Damage, DamageKind, DecodeResult, Field, Record,
+from salvagekit.core.model import (Damage, DamageKind, DecodeResult, Field, Record,
                                 Status)
-from salvage.core.plugin import Decoder
-from salvage.core.reader import SafeReader
-from salvage.core.standalone import run_standalone
+from salvagekit.core.plugin import Decoder
+from salvagekit.core.reader import SafeReader
+from salvagekit.core.standalone import run_standalone
 
 MAGIC = b"SALVAGE-STUB\x00"
 
@@ -49,6 +50,7 @@ class StubDecoder(Decoder):
         if count is None:
             self._truncated(result, count_off, size, "count field missing")
             header.status = Status.UNVERIFIED
+            header.issues.append(DamageKind.TRUNCATED)
             return result
 
         need = count * 4
@@ -62,6 +64,11 @@ class StubDecoder(Decoder):
         header.status = Status.worst(f.status for f in header.fields)
         result.meta["declared_count"] = count
 
+        # No checksum: values are at best consistent with the declared count.
+        if count_status == Status.CONSISTENT:
+            value_status, value_evidence = Status.CONSISTENT, "within the declared count"
+        else:
+            value_status, value_evidence = Status.UNVERIFIED, "no checksum in format"
         decoded = 0
         for i in range(count):
             off = reader.tell()
@@ -69,18 +76,18 @@ class StubDecoder(Decoder):
             if value is None:
                 self._truncated(result, off, size,
                                 f"expected {count} values, file ends after {decoded}")
+                header.issues.append(DamageKind.TRUNCATED)
                 break
             result.records.append(Record(
-                offset=off, status=Status.UNVERIFIED, kind="value",
-                fields=[Field("value", value, off, 4, Status.UNVERIFIED,
-                              "no checksum in format")]))
+                offset=off, status=value_status, kind="value",
+                fields=[Field("value", value, off, 4, value_status, value_evidence)]))
             decoded += 1
         result.meta["decoded_count"] = decoded
 
         if decoded == count and reader.remaining() > 0:
             start = reader.tell()
-            result.damage.append(Damage(start, size, DamageKind.UNPARSED,
-                                        "trailing bytes after the last value"))
+            result.damage.append(Damage(start, size, DamageKind.UNPARSED_BYTES,
+                                        "trailing bytes after the last value", lossy=False))
             result.warnings.append(f"{size - start} trailing bytes not parsed")
         return result
 

@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from salvage.core import emit, pipeline
+from salvagekit.core import emit, pipeline
 
 TESTS = Path(__file__).resolve().parent
 SUFFIX = ".expected.json"
@@ -40,7 +40,7 @@ def split_cases(cases: Path) -> tuple[list[str], list[str]]:
             [n for n in names if n.endswith(SUFFIX)])
 
 
-def run_cases(cases: Path, package: str = "salvage.formats") -> dict[str, Any]:
+def run_cases(cases: Path, package: str = "salvagekit.formats") -> dict[str, Any]:
     """Copy every input into a fresh temp dir, run the pipeline once, and
     return ``{input name: parsed per-file output}`` (None if not written)."""
     inputs, _ = split_cases(cases)
@@ -52,7 +52,7 @@ def run_cases(cases: Path, package: str = "salvage.formats") -> dict[str, Any]:
             shutil.copyfile(cases / name, os.path.join(inp, name))
         rep = pipeline.run(inp, out, decoder_package=package, jobs=1)
         got: dict[str, Any] = {}
-        for entry in rep["files"]:
+        for entry in rep["diagnostics"]["files"]:
             rel = entry.get("output")
             if rel is None:
                 got[entry["input"]] = None
@@ -64,7 +64,7 @@ def run_cases(cases: Path, package: str = "salvage.formats") -> dict[str, Any]:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def check(cases: Path, package: str = "salvage.formats") -> dict[str, str | None]:
+def check(cases: Path, package: str = "salvagekit.formats") -> dict[str, str | None]:
     """Compare every case in ``cases``; return ``{case: problem or None}``.
 
     Problems: "missing expectation", "orphan expectation", "no output
@@ -150,7 +150,7 @@ def format_diffs(diffs: list[str]) -> str:
     return head + ":\n" + "\n".join("  " + d for d in diffs)
 
 
-def update(fmt: str, package: str = "salvage.formats") -> dict[str, list[str]]:
+def update(fmt: str, package: str = "salvagekit.formats") -> dict[str, list[str]]:
     """Regenerate ``tests/<fmt>/cases/*.expected.json`` from the current decoders.
 
     Only that folder is touched. Returns ``{"changed": [...], "added": [...],

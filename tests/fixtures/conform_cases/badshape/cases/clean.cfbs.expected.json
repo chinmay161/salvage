@@ -1,0 +1,26 @@
+{
+  "source_file": "clean.cfbs",
+  "format": "BRAVO",
+  "status": "ok",
+  "metadata": {
+    "declared_count": 3,
+    "records_found": 3,
+    "records_verified": 3
+  },
+  "records": [
+    {
+      "magic": "CFBS",
+      "count": 3
+    },
+    {
+      "text": "alpha"
+    },
+    {
+      "text": "bravo charlie"
+    },
+    {
+      "text": "delta"
+    }
+  ],
+  "damage": []
+}

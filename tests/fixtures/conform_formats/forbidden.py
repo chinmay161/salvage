@@ -3,7 +3,7 @@
 import socket  # bug: network module
 from datetime import datetime
 
-from salvage.core.standalone import run_standalone
+from salvagekit.core.standalone import run_standalone
 from tests.fixtures.conform_formats._base import CrcDecoder
 
 

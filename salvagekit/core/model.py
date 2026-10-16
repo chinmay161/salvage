@@ -62,13 +62,24 @@ _STATUS_RANK = {
 
 
 class DamageKind(str, Enum):
-    """Category of a damaged byte range."""
+    """Category of a damaged byte range: exactly the output contract's
+    ``damage[].kind`` vocabulary (kit/OUTPUT-CONTRACT.md).
+
+    When to use each one: docs/decoder-guide.md, section 5.
+    """
 
     TRUNCATED = "truncated"
-    CHECKSUM = "checksum"
-    BOUNDS = "bounds"
-    UNPARSED = "unparsed"
-    OTHER = "other"
+    CRC_MISMATCH = "crc_mismatch"
+    CHECKSUM_MISMATCH = "checksum_mismatch"
+    BAD_LENGTH = "bad_length"
+    UNPARSED_BYTES = "unparsed_bytes"
+    COUNT_MISMATCH = "count_mismatch"
+    INVALID_VALUE = "invalid_value"
+    OOB_POINTER = "oob_pointer"
+    INDEX_MISSING = "index_missing"
+    HEADER_CHECKSUM = "header_checksum"
+    ENCRYPTED = "encrypted"
+    UNKNOWN_RECORD = "unknown_record"
 
 
 @dataclass
@@ -89,30 +100,49 @@ class Field:
 
 @dataclass
 class Record:
-    """A group of fields starting at an absolute file offset."""
+    """A group of fields starting at an absolute file offset.
+
+    In the output a record is one flat object ``{field.name: field.value}``,
+    so field names must be unique within a record (and must not be
+    "verified" or "issues", which the output adds). ``issues`` are the
+    damage kinds that affect this record (output: ``"issues": [...]``).
+    """
 
     offset: int
     status: Status
     kind: str = "record"
     fields: list[Field] = field(default_factory=list)
+    issues: list[DamageKind] = field(default_factory=list)
 
 
 @dataclass
 class Damage:
-    """A damaged byte range ``[start, end)`` in the input file."""
+    """A damaged byte range ``[start, end)`` in the input file.
+
+    Output: ``{"kind", "offset": start, "detail": reason, "lossy"}``; the
+    full range stays internal (honesty checks, coverage, report diagnostics).
+    ``lossy`` is False only when nothing was lost (e.g. a bad checksum over
+    data that was still recovered in full).
+    """
 
     start: int
     end: int
     kind: DamageKind
     reason: str
+    lossy: bool = True
 
 
 @dataclass
 class DecodeResult:
     """Everything a decoder recovered from one file (or archive member).
 
-    ``members`` holds archive entries, each a nested DecodeResult whose
-    ``name`` is the member file name inside the archive.
+    ``meta`` is the output contract's ``metadata`` (graded per format).
+    ``members`` holds nested results for archive entries, each with
+    ``name`` = the member file name inside the archive. Archive entries are
+    ALSO records (the contract grades them as records); members are not
+    emitted, only their damage is (see docs/output-format.md).
+    ``unsupported`` is True when the file is recognized but cannot be
+    decoded (e.g. encrypted): the file's status is then "unsupported".
     """
 
     format: str
@@ -123,6 +153,7 @@ class DecodeResult:
     meta: dict[str, JSONValue] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     name: str | None = None
+    unsupported: bool = False
 
     def to_dict(self) -> dict[str, JSONValue]:
         """Return a plain, JSON-safe dict. Deterministic; never raises.
@@ -143,7 +174,10 @@ class DecodeResult:
         Checks confidence in [0, 1], that every Field/Record lies within
         ``[0, file_size]``, lengths are non-negative, damage ranges satisfy
         ``0 <= start <= end <= file_size``, statuses are :class:`Status`
-        members, and recurses into ``members``.
+        members, field names are unique strings within each record (and not
+        the reserved output keys "verified"/"issues"), record ``issues`` and
+        damage kinds are :class:`DamageKind` members, ``lossy`` and
+        ``unsupported`` are bools, and recurses into ``members``.
         """
         problems: list[str] = []
         try:
@@ -236,6 +270,10 @@ def _to_plain(obj: Any) -> JSONValue:
     return json_safe(obj)
 
 
+# Keys the output adds to record objects; no field may be called this.
+RESERVED_FIELD_NAMES = frozenset({"verified", "issues"})
+
+
 def _is_int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
@@ -261,6 +299,8 @@ def _validate_result(res: Any, file_size: int, path: str, problems: list[str]) -
             problems.append(f"{p}{attr}: not a list")
     if not isinstance(res.meta, dict):
         problems.append(f"{p}meta: not a dict")
+    if not isinstance(getattr(res, "unsupported", False), bool):
+        problems.append(f"{p}unsupported: not a bool")
 
     for ri, rec in enumerate(_as_list(res.records)):
         rp = f"{p}records[{ri}]"
@@ -272,11 +312,28 @@ def _validate_result(res: Any, file_size: int, path: str, problems: list[str]) -
             problems.append(f"{rp}.offset: not an int")
         elif not 0 <= rec.offset <= file_size:
             problems.append(f"{rp}.offset: {rec.offset} outside [0, {file_size}]")
+        issues = getattr(rec, "issues", [])
+        if not isinstance(issues, list):
+            problems.append(f"{rp}.issues: not a list")
+        else:
+            for ii, kind in enumerate(issues):
+                if not isinstance(kind, DamageKind):
+                    problems.append(f"{rp}.issues[{ii}]: {json_safe(kind)!r} is not a "
+                                    "DamageKind member")
+        names: set[str] = set()
         for fi, fld in enumerate(_as_list(rec.fields)):
             fp = f"{rp}.fields[{fi}]"
             if not isinstance(fld, Field):
                 problems.append(f"{fp}: not a Field")
                 continue
+            if not isinstance(fld.name, str):
+                problems.append(f"{fp}.name: not a string")
+            elif fld.name in RESERVED_FIELD_NAMES:
+                problems.append(f"{fp}.name: {fld.name!r} is reserved (the output adds it)")
+            elif fld.name in names:
+                problems.append(f"{fp}.name: duplicate field name {fld.name!r} in one record")
+            else:
+                names.add(fld.name)
             _check_status(fld.status, fp, problems)
             ok = True
             if not _is_int(fld.offset):
@@ -302,6 +359,8 @@ def _validate_result(res: Any, file_size: int, path: str, problems: list[str]) -
             continue
         if not isinstance(dmg.kind, DamageKind):
             problems.append(f"{dp}.kind: not a DamageKind")
+        if not isinstance(getattr(dmg, "lossy", True), bool):
+            problems.append(f"{dp}.lossy: not a bool")
         if not (_is_int(dmg.start) and _is_int(dmg.end)):
             problems.append(f"{dp}: start/end not ints")
         elif not 0 <= dmg.start <= dmg.end <= file_size:

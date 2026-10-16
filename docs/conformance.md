@@ -7,7 +7,7 @@ python tools/task.py conform                          # all decoders
 python tools/task.py conform --quick                  # the merge gate's smaller run
 ```
 
-Every decoder in `salvage/formats/` is checked automatically against the
+Every decoder in `salvagekit/formats/` is checked automatically against the
 contract in [decoder-guide.md](decoder-guide.md). It **must PASS before you
 open a pull request**. `python tools/task.py test` runs it too (the merge
 gate, in quick mode: see below), so a failing decoder breaks the build.
@@ -16,7 +16,7 @@ Output, one line per decoder:
 
 ```
 PASS  STUB      2 inputs, 82 variants, 0 warnings
-FAIL  LIBRA-98  C5 honesty: field "temp" @0x40 verified but bytes changed (bitflip@66.2 of samples/run_07.lab)
+FAIL  LIBRA-98  C5 honesty: field "id" @0x40 verified but bytes changed (bitflip@66.2 of kit/samples/s01.dat)
                 (+3 more findings; --verbose lists them)
 ```
 
@@ -28,10 +28,10 @@ FAILs. The last line says which mode ran:
 
 ## What the suite feeds your decoder
 
-- **Corpus:** every file under `samples/` and every input in
+- **Corpus:** every file under `kit/samples/` and every input in
   `tests/*/cases/`. Your **claimed inputs** are the corpus files your probe
   scores at least 0.5. Your module name (`libra98` for
-  `salvage/formats/libra98.py`) names your folders:
+  `salvagekit/formats/libra98.py`) names your folders:
   `tests/libra98/cases/`, `docs/spec/libra98.md`, `docs/log/libra98.md`.
 - **Synthetic inputs:** empty, one zero byte, 64 KB of 0x00, 64 KB of
   0xFF, 64 KB of random bytes.
@@ -44,11 +44,11 @@ FAILs. The last line says which mode ran:
   decoder name, so a failure reproduces exactly on every run and machine.
 
 **Quick mode** (`conform --quick`, and the merge gate in `task.py test`)
-keeps the test suite fast as `samples/` grows. Every check still runs,
+keeps the test suite fast as `kit/samples/` grows. Every check still runs,
 with the same IDs and messages, but:
 
 - the corpus is the golden case inputs plus the synthetic inputs
-  (`samples/` is not read);
+  (`kit/samples/` is not read);
 - each claimed input gets 8 truncations, 8 bit flips, 2 zero blocks
   (start and middle), 2 random blocks and 1 append;
 - C7 decodes only the first claimed input (that decoded cleanly).
@@ -59,9 +59,9 @@ To reproduce a variant by hand, build it in a Python shell and decode it:
 
 ```python
 from tests.conformance import variants
-from salvage.core.reader import SafeReader
-from salvage.formats.libra98 import Libra98Decoder
-data = open("samples/run_07.lab", "rb").read()
+from salvagekit.core.reader import SafeReader
+from salvagekit.formats.libra98 import Libra98Decoder
+data = open("kit/samples/s01.dat", "rb").read()
 v = next(v for v in variants(data, "LIBRA-98") if v.name == "bitflip@66.2")
 print(Libra98Decoder().decode(SafeReader(v.data)).to_dict())
 ```
@@ -76,16 +76,22 @@ crash the remaining checks are skipped.
 ## C1 metadata (FAIL)
 
 **Checks:** `name` is non-empty, at most 32 characters, only uppercase
-letters, digits, space and `. - _`. `extensions` is a tuple of lowercase
-strings starting with `.`. Also reported here: your module cannot be
-imported, the decoder cannot be created, or two decoders share a name.
+letters, digits, space and `. - _`, and, in `salvagekit/formats/`, one of
+the contract's format names: `LIBRA-98`, `LABLOG`, `VAULT`, `WKS`, `WPD`,
+`BRAVO`, `CVT`, `EBCDIC-DUMP`, `WAD`, `PAK` (the test-only `STUB` keeps
+its name; fixture packages are exempt). `extensions` is a tuple of
+lowercase strings starting with `.`. Also reported here: your module
+cannot be imported, the decoder cannot be created, or two decoders share a
+name.
 
-**Why:** the name is the `format` in every output and must be unique and
-stable. Extensions break ties between candidates.
+**Why:** the name is the `format` in every output; the graders expect the
+contract's names exactly. Extensions break ties between candidates.
 
-**Typical failure:** `C1 metadata: name 'Libra98' may only use uppercase letters, digits, space and . - _`
+**Typical failures:**
+- `C1 metadata: name 'Libra98' may only use uppercase letters, digits, space and . - _`
+- `C1 metadata: name 'LIBRA98' is not a contract format name (one of LIBRA-98, LABLOG, ...); it is the output's "format"`
 
-**Fix:** `name = "LIBRA-98"`, `extensions = (".lb9",)` (a tuple, so note
+**Fix:** `name = "LIBRA-98"`, `extensions = (".dat",)` (a tuple, so note
 the comma for a single entry).
 
 ## C2 probe safety (FAIL)
@@ -100,7 +106,7 @@ take at most 0.5 s.
 probe slows down or breaks identification for all formats.
 
 **Typical failures:**
-- `C2 probe safety: probe raised struct.error: unpack_from requires a buffer of at least 4 bytes (at salvage/formats/libra98.py:41 in probe) (<1 zero byte>)`
+- `C2 probe safety: probe raised struct.error: unpack_from requires a buffer of at least 4 bytes (at salvagekit/formats/libra98.py:41 in probe) (<1 zero byte>)`
 - `C2 probe safety: probe on 8 MB of random bytes took 1.25 s, and 1.22 s when re-measured alone (limit 0.5 s): look at the header, do not scan the whole file`
 
 **Timing is measured twice before it fails.** Up to 4 decoders are
@@ -139,7 +145,9 @@ input, `decode(SafeReader(data))` is called directly and:
   file, statuses are `Status` members, damage ranges valid, confidence in [0, 1]);
 - `json.dumps(result.to_dict(), allow_nan=False)` must work;
 - the full per-file output, built exactly as the pipeline builds it, must
-  pass the active output schema;
+  pass the official output schema (`salvagekit/core/schemas/official/`),
+  including its status rules (an `ok` file has no damage and no
+  `"verified": false` record);
 - it must finish within the time limit (`timed out on <variant>`), without
   crashing the worker process.
 
@@ -148,7 +156,7 @@ damaged file loses the whole file in the real run. Damaged files are the
 point of this project.
 
 **Typical failures:**
-- `C4 decode safety: decode raised IndexError: index out of range (at salvage/formats/libra98.py:88 in decode) (truncate@7 of tests/libra98/cases/clean.lb9)`
+- `C4 decode safety: decode raised IndexError: index out of range (at salvagekit/formats/libra98.py:88 in decode) (truncate@7 of tests/libra98/cases/clean.lb9)`
 - `C4 decode safety: result.validate() reports: records[2].fields[0]: offset+length 40 beyond file size 29 (truncate@29 of ...)`
 - `C4 decode safety: timed out on append@57 (limit 5 s); remaining checks skipped (append@57 of ...)`
 
@@ -174,7 +182,7 @@ archive members.
 trip, exact magic). If damage cannot change a verified value's status,
 the promise means nothing.
 
-**Typical failure:** `C5 honesty: field "temp" @0x40 verified but bytes changed (bitflip@66.2 of samples/run_07.lab)`
+**Typical failure:** `C5 honesty: field "id" @0x40 verified but bytes changed (bitflip@66.2 of kit/samples/s01.dat)`
 
 **Fix:** mark a field `verified` only when a checksum (or exact magic, or
 round trip) covers exactly those bytes and matched. Make the field's
@@ -217,8 +225,8 @@ clock change every run.
 
 **Checks:** your module's source (and the private helper modules it
 imports) is parsed with `ast`, without running it:
-- imports allowed: the standard library, `salvage.core` and its
-  submodules, and private helpers `salvage.formats._*` (not other
+- imports allowed: the standard library, `salvagekit.core` and its
+  submodules, and private helpers `salvagekit.formats._*` (not other
   decoders' modules, not third-party packages);
 - imports forbidden: `socket ssl http urllib ftplib smtplib subprocess
   multiprocessing threading asyncio ctypes os shutil pathlib tempfile glob
@@ -233,7 +241,7 @@ Everything under `if __name__ == "__main__":` is exempt (that is where
 **Why:** no network, no file access outside `SafeReader`, no hidden
 nondeterminism (time, randomness, local time zone, memory addresses).
 
-**Typical failure:** `C8 static rules: salvage/formats/libra98.py:12: forbidden import os`
+**Typical failure:** `C8 static rules: salvagekit/formats/libra98.py:12: forbidden import os`
 
 **Fix:** remove the import or call. `os.path` work is not needed (you get
 bytes). For timestamps use
@@ -264,7 +272,7 @@ file.
 **Why:** golden cases are how the team notices when your output changes,
 and they are part of the corpus the other checks run on.
 
-**Typical failure:** `C10 tests: no golden cases: create tests/libra98/cases/ with at least one input file, then run `python tools/task.py golden-update libra98` and check every .expected.json by hand (docs/decoder-guide.md section 10)`
+**Typical failure:** `C10 tests: no golden cases: create tests/libra98/cases/ with at least one input file, then run `python tools/task.py golden-update libra98` and check every .expected.json by hand (docs/decoder-guide.md section 12)`
 
 **Fix:** follow the message. Small hand-made inputs are best: one clean,
 one truncated, one with a bad checksum.
@@ -277,11 +285,40 @@ the log has at least one entry heading `### YYYY-MM-DD HH:MM — <title>`.
 **Why:** the next person to touch your format needs what you found out, and
 what did not work.
 
-**Typical failure:** `C11 docs: docs/log/libra98.md is missing: keep a research log (docs/decoder-guide.md section 11)`
+**Typical failure:** `C11 docs: docs/log/libra98.md is missing: keep a research log (docs/decoder-guide.md section 14)`
 
 **Fix:** copy `docs/spec/_TEMPLATE.md` and `docs/log/_TEMPLATE.md` to
 `docs/spec/<module>.md` and `docs/log/<module>.md` and fill them in
-(decoder guide section 11).
+(decoder guide section 14).
+
+## C12 record shape (FAIL)
+
+**Checks:** only for a decoder whose `name` is a contract format. Each
+clean claimed input is run through the pipeline exactly as in a real run,
+and every record of the per-file output is checked against that format's
+shape in `salvagekit/core/contract_shapes.py`:
+- every required graded field is present (a conditional one, such as VAULT
+  `text` or WKS `alignment`, only where it applies);
+- no field outside the format's list, apart from `verified` and `issues`;
+- enum fields (VAULT/WKS/WPD `type`, WKS `alignment`) use allowed values;
+- `null` only in a nullable field (LIBRA-98 `due_date`, WPD `text`) or in
+  a record marked `"verified": false` (a lost value);
+- for LABLOG, CVT and EBCDIC-DUMP, every graded `metadata` key is present
+  (CVT `structure` is `seq` or `vlir`); extra metadata keys are fine.
+
+Each distinct problem is reported once, with the first record that has it
+and how many more do.
+
+**Why:** the graders compare records field by field with the contract's
+names; a misspelled or missing field scores nothing, however good the
+decoding.
+
+**Typical failure:** `C12 record shape: records[0]: missing graded field 'price_cents' (and 4 more records) (kit/samples/s01.dat)`
+
+**Fix:** name each `Field` exactly as the contract does and give every
+record all of its format's fields (`None` with `Status.LOST` when lost);
+see [decoder-guide.md section 8](decoder-guide.md#8-records-and-metadata-the-contract-shapes).
+Header values belong in `result.meta`, not in a record.
 
 ---
 

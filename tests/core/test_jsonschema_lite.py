@@ -4,8 +4,8 @@ import tempfile
 import time
 import unittest
 
-from salvage.core import jsonschema_lite as js
-from salvage.core.jsonschema_lite import Schema, SchemaError, UnsupportedSchema, load_schema
+from salvagekit.core import jsonschema_lite as js
+from salvagekit.core.jsonschema_lite import Schema, SchemaError, UnsupportedSchema, load_schema
 
 
 def errs(schema, instance, limit=50):
@@ -254,15 +254,13 @@ class RobustnessTests(unittest.TestCase):
 
 class SpeedTests(unittest.TestCase):
     def test_40000_record_output_under_2s(self):
-        from salvage.core import validate
-        record = {"offset": 0, "status": "unverified", "kind": "big",
-                  "fields": [{"name": "v", "value": "x" * 108, "offset": 0, "length": 5,
-                              "status": "unverified", "evidence": ""}]}
-        doc = {"schema_version": "provisional-1",
-               "source": {"path": "big.t", "size": 13, "sha256": "0" * 64},
-               "format": "T-BIG", "variant": None, "confidence": 1.0, "status": "decoded",
+        from salvagekit.core import validate
+        record = {"v": "x" * 108, "n": 5, "flag": True, "verified": False,
+                  "issues": ["crc_mismatch"]}
+        doc = {"source_file": "big.t", "format": "T-BIG", "status": "partial",
+               "metadata": {"k": 1},
                "records": [json.loads(json.dumps(record)) for _ in range(40_000)],
-               "members": [], "damage": [], "meta": {}, "warnings": [], "errors": []}
+               "damage": [{"kind": "crc_mismatch", "offset": 0, "detail": "", "lossy": False}]}
         schema = validate.active("output").schema
         t0 = time.perf_counter()
         problems = schema.errors(doc)

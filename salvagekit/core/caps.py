@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from salvage.core import limits
-from salvage.core.model import DecodeResult
+from salvagekit.core import limits
+from salvagekit.core.model import DecodeResult
 
 
 def enforce(result: DecodeResult, max_records: int | None = None,
@@ -14,7 +14,7 @@ def enforce(result: DecodeResult, max_records: int | None = None,
     order; whatever comes after the limit is dropped. Each cap adds the
     warning "output capped at N records" / "output capped at N members" to
     ``result.warnings`` and is returned, so the caller can mark the file
-    "partial". Defaults come from :mod:`salvage.core.limits` at call time.
+    "partial". Defaults come from :mod:`salvagekit.core.limits` at call time.
     """
     max_records = limits.MAX_RECORDS if max_records is None else max_records
     max_members = limits.MAX_MEMBERS if max_members is None else max_members

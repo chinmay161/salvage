@@ -2,15 +2,15 @@
 
     python -m tests.fixtures.cli_with_package PACKAGE [CLI arguments...]
 
-Wraps ``salvage.core.pipeline.run`` so the CLI uses PACKAGE instead of
-salvage.formats; everything else is the unchanged ``salvage.cli.main``.
+Wraps ``salvagekit.core.pipeline.run`` so the CLI uses PACKAGE instead of
+salvagekit.formats; everything else is the unchanged ``salvagekit.cli.main``.
 """
 
 import functools
 import sys
 
-from salvage import cli
-from salvage.core import pipeline
+from salvagekit import cli
+from salvagekit.core import pipeline
 
 
 def main() -> None:
