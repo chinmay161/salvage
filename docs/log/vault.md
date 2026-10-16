@@ -153,6 +153,7 @@ Pixel dimensions match file dimensions perfectly.
 
 **Result:** CONFIRMED. Bitmap payloads begin with 1-byte width and 1-byte height.
 
+
 ### 2026-10-16 15:55 — s10 Record 1 checksum failure is an unknown compression algorithm?
 
 **Hypothesis:** `s10.dat` Record 1 (`sensor.bin`) fails CRC verification because it uses an unidentified compression or encoding scheme.
@@ -162,3 +163,79 @@ Pixel dimensions match file dimensions perfectly.
 **Evidence:** Record 1 index entry has `flags = 0x00` (uncompressed, plain raw binary), `stored_sz = 28` (4 header + 24 data), `decoded_sz = 24`. Stored CRC-32 is `0xF55026E8`, but calculated CRC-32 of the 24 payload bytes is `0x5CA76CA9`. The payload is raw binary bytes with no valid checksum match under any transformation.
 
 **Result:** REJECTED. The format parser correctly interprets the record as uncompressed raw binary; the failure is intentional archive damage (`crc_mismatch`), which must be flagged as `"verified": false` and `issues: ["crc_mismatch"]`.
+
+### 2026-10-16 16:00 — Filename rolling XOR key resets per string
+
+**Hypothesis:** The rolling XOR transformation key does not accumulate across consecutive strings in the string table, but strictly resets to `header.xor_key` at the first character byte of every string descriptor.
+
+**Tried:** Tested two decoding models on `s08.dat` (xor_key = 32), `s09.dat` (xor_key = 252), and `s10.dat` (xor_key = 248):
+1. Reset model: byte `j` of each string uses key `(xor_key + j) & 0xFF` with `j = 0..name_len - 1`.
+2. Continuous stream model: key accumulates across strings without resetting.
+
+**Evidence:** In `s08.dat`, String 0 is "report.txt" (len 10). Under the reset model, String 1 at offset 11 decodes cleanly to "notes.txt" and String 2 at offset 21 decodes cleanly to "logo.bin". Under the continuous stream model (key starting at 32 + 10 = 42 for String 1), String 1 decodes to corrupted binary `dezky$bnn`. Across all 9 strings in `s08.dat`, `s09.dat`, and `s10.dat`, the reset model produces 100% valid ASCII filenames without replacement characters.
+
+**Result:** CONFIRMED. Filename rolling XOR strictly resets to `(xor_key + j) & 0xFF` for each string entry (`j = 0..name_len - 1`).
+
+### 2026-10-16 16:05 — Header flag bit 0 obfuscates Pascal length prefix
+
+**Hypothesis:** Header byte 0x07 (`flags`) bit 0 (0x01) governs whether Pascal string length prefix bytes in the string table are XORed with `header.xor_key`.
+
+**Tried:** Compared string table length bytes across samples with `header.flags`:
+- `s08.dat`: `flags = 0x00`, `xor_key = 32`.
+- `s09.dat`: `flags = 0x01`, `xor_key = 252`.
+- `s10.dat`: `flags = 0x00`, `xor_key = 248`.
+
+**Evidence:**
+- In `s08.dat` (flags = 0), raw length bytes at name offsets 0, 11, 21 are `0x0A` (10), `0x09` (9), `0x08` (8). If XORed with 32, lengths would be 42, 41, 40, which immediately overrun the 30-byte string table. Unmodified bytes match expected lengths for "report.txt", "notes.txt", "logo.bin".
+- In `s09.dat` (flags = 1), raw length bytes at name offsets 0, 9, 19 are `0xF4`, `0xF5`, `0xF7`. If un-XORed, they specify lengths of 244, 245, 247, which wildly exceed the 31-byte string table. XORed with `xor_key = 252` (`0xFC`), they evaluate to `0xF4 ^ 0xFC = 8`, `0xF5 ^ 0xFC = 9`, `0xF7 ^ 0xFC = 11`. Sum of entries: `(1+8) + (1+9) + (1+11) = 31` bytes, perfectly spanning `182 - 151 = 31` bytes.
+- In `s10.dat` (flags = 0), raw length bytes are `0x0A` (10), `0x0A` (10), `0x09` (9). Sum of entries: `(1+10) + (1+10) + (1+9) = 32` bytes, perfectly spanning `274 - 242 = 32` bytes.
+
+**Result:** CONFIRMED. When `header.flags & 0x01 == 1`, `name_len = raw_byte ^ header.xor_key`. When `header.flags & 0x01 == 0`, `name_len = raw_byte`.
+
+### 2026-10-16 16:10 — Payload XOR key starts at index 0 of stored payload bytes
+
+**Hypothesis:** When payload XOR is enabled (`flags & 0x02`), the rolling XOR key begins with `header.xor_key` applied to the first stored payload byte (offset `data_offset + 4`), strictly excluding the 4-byte chunk header (`BL` marker and chunk ID) and 4-byte CRC trailer.
+
+**Tried:** Tested 3 candidate start offsets on `s08.dat` Record 1 (`notes.txt`, `data_offset = 173`, `stored_sz = 24`, payload bytes at 177..197):
+1. Reset at payload start (byte `j` of payload uses `(xor_key + j) & 0xFF` for `j = 0..19`).
+2. Offset including chunk header (byte `j` uses `(xor_key + 4 + j) & 0xFF`).
+3. Offset from file start (byte `j` uses `(xor_key + 177 + j) & 0xFF`).
+
+**Evidence:**
+- Model 1 (reset at payload start): Decodes to `Remember: buy chalk.` (20 bytes). Matches `s08.dat.json` record 1 text and CRC-32 `0x0AC1B211` exactly.
+- Model 2 (header included): Decodes to corrupted bytes `Vaiaani~>$fqe<\x7fteho*`. CRC-32 fails.
+- Model 3 (file offset): Decodes to arbitrary non-ASCII bytes `\xa3\x96\x9c...`. CRC-32 fails.
+
+**Result:** CONFIRMED. Payload XOR is applied exclusively to the `stored_sz - 4` payload bytes from `data_offset + 4` to `data_offset + stored_sz`, with rolling key resetting to `header.xor_key` at index 0 of the payload.
+
+### 2026-10-16 16:15 — Record XOR applicability matches index flag bit 1
+
+**Hypothesis:** Bit 1 (0x02) of index entry byte 0x03 (`flags`) strictly controls whether payload XOR de-obfuscation must be performed.
+
+**Tried:** Evaluated bit 1 across all 9 records in `s08.dat`, `s09.dat`, and `s10.dat`. Applied XOR de-obfuscation only when `flags & 0x02 != 0`.
+
+**Evidence:**
+The complete record-level XOR validation matrix:
+
+#### Sample `kit/samples/s08.dat` (header: xor_key=32, flags=0)
+| ID | Decoded Filename | Type | Flags | XOR Enabled | Stored Payload Range | Candidate XOR Rule | Validation Result | Unresolved Ambiguity |
+|---|---|---|---|---|---|---|---|---|
+| 30574 | `report.txt` | 1 (text) | 0x03 | Yes (bit 1) | [20, 169) (149 B) | `raw[j] ^ ((32+j) & 0xFF)` | CONFIRMED (matches reference JSON & CRC 0x1D8949DA) | None |
+| 30577 | `notes.txt` | 1 (text) | 0x02 | Yes (bit 1) | [177, 197) (20 B) | `raw[j] ^ ((32+j) & 0xFF)` | CONFIRMED (matches reference JSON & CRC 0x0AC1B211) | None |
+| 30580 | `logo.bin` | 3 (binary) | 0x00 | No (bit 1=0) | [205, 225) (20 B) | No XOR (raw payload) | CONFIRMED (matches reference JSON & CRC 0x8A303553) | None |
+
+#### Sample `kit/samples/s09.dat` (header: xor_key=252, flags=1)
+| ID | Decoded Filename | Type | Flags | XOR Enabled | Stored Payload Range | Candidate XOR Rule | Validation Result | Unresolved Ambiguity |
+|---|---|---|---|---|---|---|---|---|
+| 37327 | `edge.bin` | 3 (binary) | 0x01 | No (bit 1=0) | [20, 47) (27 B) | No XOR (RLE compressed) | CONFIRMED (RLE produces 822 B, matches CRC 0xD5EAD680) | None |
+| 37330 | `icon.bmp8` | 2 (bitmap) | 0x01 | No (bit 1=0) | [55, 108) (53 B) | No XOR (RLE compressed) | CONFIRMED (RLE produces 130 B, matches CRC 0x6EFB0868) | None |
+| 37333 | `unicode.txt` | 1 (text) | 0x02 | Yes (bit 1) | [116, 147) (31 B) | `raw[j] ^ ((252+j) & 0xFF)` | CONFIRMED (UTF-8 "Müller – Zürich ✓ room 12", CRC 0x3E998E58) | None |
+
+#### Sample `kit/samples/s10.dat` (header: xor_key=248, flags=0)
+| ID | Decoded Filename | Type | Flags | XOR Enabled | Stored Payload Range | Candidate XOR Rule | Validation Result | Unresolved Ambiguity |
+|---|---|---|---|---|---|---|---|---|
+| 6146 | `report.txt` | 1 (text) | 0x03 | Yes (bit 1) | [20, 167) (147 B) | `raw[j] ^ ((248+j) & 0xFF)` | CONFIRMED (plain text, matches CRC 0xF3606645) | None |
+| 6149 | `sensor.bin` | 3 (binary) | 0x00 | No (bit 1=0) | [175, 199) (24 B) | No XOR (raw binary) | CONFIRMED (raw bytes framing valid; CRC mismatch intentional damage) | None |
+| 6152 | `icon.bmp8` | 2 (bitmap) | 0x01 | No (bit 1=0) | [207, 238) (31 B) | No XOR (RLE compressed) | CONFIRMED (RLE produces 66 B, matches CRC 0xB507A8D4) | None |
+
+**Result:** CONFIRMED. Bit 1 of index entry `flags` strictly determines XOR obfuscation. When bit 1 is 0, stored bytes are not XORed; when bit 1 is 1, rolling XOR de-obfuscation with `(xor_key + j) & 0xFF` is required.
