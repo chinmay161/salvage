@@ -309,13 +309,20 @@ result. A failed hypothesis gets `**Result:** rejected, because ...`.
 ## 12. Before opening a pull request
 
 ```sh
-python tools/task.py test
+python tools/task.py conform <your format>   # must PASS
+python tools/task.py test                    # must PASS
 ```
 
-It must pass (all tests, including golden tests and the schema validation
-of pipeline output). Also check:
+`conform` runs the decoder conformance suite on your decoder: crashes,
+hangs, invalid results, `verified` without evidence, round trip,
+determinism, forbidden imports/calls, speed, golden cases and docs. Every
+check, its typical failure message and how to fix it are in
+[`docs/conformance.md`](conformance.md); add `--verbose` to see every
+finding. `test` runs all tests, including golden tests, schema validation
+of pipeline output and the conformance suite for every decoder.
 
-- your decoder never raises on empty, truncated or random input;
+Also check:
+
 - every read is labelled, and padding is labelled `"padding"`;
 - nothing is `verified` without evidence named in `evidence`;
 - `docs/spec/<name>.md` and `docs/log/<name>.md` are up to date;

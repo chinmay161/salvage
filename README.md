@@ -38,6 +38,19 @@ With no arguments the image prints its help. Salvage always exits with
 status 0, even for a missing input folder. Problems are listed in
 `report.json` and on stderr.
 
+Options go before or after the folders:
+
+- `--jobs N` decodes up to N files at once (default: the number of CPUs,
+  at most 4; `--jobs 1` is one at a time). The output is identical for
+  every N.
+- `--stats` prints the number of workers used to stderr.
+
+`docker stop` (SIGTERM) or Ctrl-C stops the run cleanly: files already
+finished keep their output, `report.json` is written with the error
+`interrupted: N files not processed`, and the exit status is still 0.
+Nothing in the output folder is ever deleted; outputs of an earlier run are
+overwritten and `report.json` warns that the folder was not empty.
+
 **Linux: owning the output files.** The container runs as root, so it can
 write to an output folder that Docker created. Those files are then owned by
 root. To get files owned by you, create `out` first and add
@@ -92,6 +105,8 @@ python tools/task.py api             # public API of salvage.core / salvage.form
 python tools/task.py run IN OUT      # run the CLI locally
 python tools/task.py golden [FORMAT] # golden tests (tests/<format>/cases/)
 python tools/task.py docker-smoke    # host vs container run: outputs must be byte-identical
+python tools/task.py conform [--quick] # decoder conformance suite (docs/conformance.md)
+python tools/task.py bench [--docker]  # throughput with --jobs 1 and --jobs auto
 ```
 
 There are more commands: `build`, `build-offline`, `docker-run`,

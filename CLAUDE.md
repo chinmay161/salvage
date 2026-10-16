@@ -33,6 +33,11 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
 - `python tools/task.py run IN OUT`  run the CLI on IN, writing to OUT
 - `python tools/task.py golden [FORMAT]`  golden tests (all formats, or one)
 - `python tools/task.py golden-update FORMAT`  regenerate tests/FORMAT/cases/*.expected.json
+- `python tools/task.py conform [NAME] [--verbose] [--quick]`  decoder
+  conformance suite (docs/conformance.md); every decoder must PASS (`test`
+  runs it in quick mode: no samples/, fewer variants)
+- `python tools/task.py bench [--docker]`  throughput, --jobs 1 vs auto
+  (not part of `test`)
 - `python tools/task.py build` / `build-offline`  build the salvage:dev image
   (offline: base image must already be pulled)
 - `python tools/task.py docker-run IN OUT`  run the image on IN (read-only), writing to OUT
@@ -41,7 +46,7 @@ possible and the damage is reported honestly. Hackathon project, 4 people.
 - `python -m salvage.core.validate`  show which output/report schemas are
   active (official in salvage/core/schemas/official/, else provisional)
 - `make <command>` wraps each of these where make exists
-  (`make run IN=... OUT=...`, `make golden FORMAT=stub`, ...)
+  (`make run IN=... OUT=...`, `make golden FORMAT=stub`, `make conform NAME=stub`, ...)
 
 ## Decoders
 - Teammates follow docs/decoder-guide.md; docs/decoder-template.py is the

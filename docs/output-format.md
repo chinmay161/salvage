@@ -58,7 +58,8 @@ entry gets `"output": null` and an error.
   at N records"` / `"... members"`, see "Limits"), then pipeline warnings
   (e.g. `"ambiguous: A, B"`).
 - `errors` = why a file failed (timeout, crash, read error, ...).
-- `sha256` is `null` only if the file could not be read.
+- `sha256` is `null` only if the file could not be read, disappeared, or
+  is over `MAX_FILE_BYTES` (such a file is never read, not even to hash it).
 
 ### `format`, `variant` and `confidence` = identification
 
@@ -91,7 +92,7 @@ So a LIBRA-98 file whose decoder crashes is `"format": "LIBRA-98"`,
 | `decoded` | a decoder succeeded; no damage and nothing `lost` anywhere (incl. members) |
 | `partial` | a decoder succeeded; some damage or something `lost`                    |
 | `unknown` | no candidate: no decoder's probe reached 0.5; see below                 |
-| `failed`  | timeout, worker crash, too large, unreadable, or every candidate errored or returned an invalid result |
+| `failed`  | timeout, worker crash, memory limit, too large, unreadable, disappeared, or every candidate errored or returned an invalid result |
 
 For `unknown` files `format` is `"unknown"`, `confidence` 0.0, no records,
 and `meta` = `{size, sha256, entropy (bits/byte, 4 decimals),
@@ -109,6 +110,16 @@ the worker got: `"timeout after 20s (during probe)"`,
 `"timeout after 20s (during decode)"`,
 `"worker crashed with exit code 3 (during decode)"`. "During probe" covers
 everything before identification finished (start-up, reading, probing).
+A worker that ignores SIGTERM is killed (SIGKILL) and is still reported as
+a timeout. Other reasons:
+
+| error | meaning |
+|-------|---------|
+| `too large (N bytes > M)` | over `MAX_FILE_BYTES`; never read |
+| `file disappeared` | deleted between the folder walk and the read |
+| `cannot read file: <reason>` | could not be opened or read |
+| `memory limit (2048 MiB)` | a candidate ran out of memory under the worker cap (POSIX; see "Running") and no candidate succeeded; that attempt's outcome is `error: memory limit` |
+| `no candidate decoder produced a valid result` | every candidate errored, was invalid or empty |
 
 ## `report.json` (output root, written last, also after a midway failure)
 
@@ -135,6 +146,7 @@ everything before identification finished (start-up, reading, probing).
      "warnings": [], "errors": []}
   ],
   "skipped": [{"input": "link", "reason": "symlink (not followed)"}],
+  "warnings": ["output dir was not empty: 3 existing files"],
   "errors": ["run-level errors, e.g. decoder import errors"]
 }
 ```
@@ -142,15 +154,24 @@ everything before identification finished (start-up, reading, probing).
 - `files` are in walk order (names sorted at every directory level).
 - `candidates` lists every decoder's probe, sorted by score then name;
   `error` appears only when the probe misbehaved.
-- `attempts[].outcome` is `ok`, `empty`, `invalid: <first 3 problems>` or
-  `error: <Type>: <message>`.
+- `attempts[].outcome` is `ok`, `empty`, `invalid: <first 3 problems>`,
+  `error: <Type>: <message>` or `error: memory limit`.
 - Counts and `damage` include archive members, recursively; `members` is
   the total number of nested members.
 - `skipped`: symlinks, FIFOs, devices, sockets, unreadable folders. They
   are never opened.
+- `warnings` (run level, always present): `"output dir was not empty: N
+  existing files"` when the output folder already held N files (counted
+  recursively before the run). Nothing is deleted; our own outputs are
+  overwritten.
 - `errors` (run level): missing/unreadable input directory, decoder import
   errors, a failed report write, an unusable official schema, a report that
-  fails schema validation, internal errors.
+  fails schema validation, internal errors, and
+  `"interrupted: N files not processed"` (see "Running").
+- An entry's own `errors` get `"cannot write output: <reason>"` (and
+  `"output": null`) when its output cannot be written, e.g.
+  `"cannot write output: output path is an existing folder"`; the run
+  continues.
 - `schema_version` names the active report schema: `"provisional-1"`, or
   `"official"` once the organizers' schema is in use. Each per-file
   output's `schema_version` names the active output schema the same way.
@@ -174,6 +195,31 @@ the attempt whose result was emitted:
 is explained (`bytes_explained` 0, the whole file unexplained). `failed`
 files: `"coverage": null`. Probing with `salvage.core.resync.ByteView`
 claims nothing, so it never counts.
+
+## Running
+
+- **Parallel workers.** `--jobs N` (default `min(cpu_count, 4)`) runs up to
+  N isolated workers at once, each with its own pipe and deadline. Only the
+  parent writes files, and `files` stays in walk order, so the output is
+  byte-identical for every N. stderr progress lines come in completion
+  order.
+- **Memory cap (POSIX only).** Each worker caps its address space at
+  `MAX_WORKER_MEMORY` (2 GiB) with `resource.setrlimit(RLIMIT_AS)` before
+  it reads the file; a decode that needs more gets a `MemoryError` and the
+  file fails with `memory limit (2048 MiB)`. **On Windows there is no
+  `resource` module and no cap**: the step is skipped silently, and a
+  decoder that runs out of memory fails with `out of memory (no memory cap
+  in this process)` instead.
+- **Interrupts.** SIGTERM (`docker stop`) and SIGINT (Ctrl-C) stop the
+  run: no new file is started, running workers are killed, and
+  `report.json` is written with the files finished so far plus the
+  run-level error `"interrupted: N files not processed"`. Files that were
+  not finished get no output (nothing is invented). The exit status is 0.
+- **Test-only limit overrides.** The environment variable `SALVAGE_LIMITS`
+  (a JSON object such as `{"MAX_FILE_BYTES": 1048576}`) replaces limits
+  from `salvage/core/limits.py` at import time, in the parent and in every
+  worker. Unknown keys and bad JSON are ignored with one stderr line. Never
+  set it in production.
 
 ## Limits
 
