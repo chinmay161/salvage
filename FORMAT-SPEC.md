@@ -45,9 +45,155 @@ explained, how many were padding, and which ranges nobody explained.
 
 ## Contents
 
+- [LIBRA-98](#libra-98)
+- [LABLOG](#lablog)
 - [Output format — PROVISIONAL](#output-format--provisional)
 
-No format specifications have been written yet.
+## LIBRA-98
+
+### Summary
+
+LIBRA-98 is a record-based municipal library circulation catalogue format (context hint: "Municipal library circulation desk PC, about 1998"). Studied: `kit/samples/s01.dat` (289 bytes, clean), `kit/samples/s02.dat` (424 bytes, clean with complex flags), `kit/samples/s03.dat` (311 bytes, clean v2.1 with header extension), `kit/samples/s04.dat` (259 bytes, truncated at record 5), and `kit/samples/s29_almost_libra.dat` (7 bytes, negative test case).
+
+### Identification
+
+Files begin with ASCII `LB98` (`4C 42 39 38`) at offset 0x00 followed by major version 2 at 0x04. `probe()` requires at least 16 bytes, valid magic, version 2, and a data offset within bounds. If the `END!` trailer with valid 16-bit sum is detected, probe scores 1.0; otherwise 0.8 for valid header. Files shorter than 16 bytes (such as `s29_almost_libra.dat`) or with wrong magic score 0.0. Extensions `.lb9` and `.dat` serve as weak hints.
+
+### Layout
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|---|---|---|---|---|---|---|
+| 0x00 | 4 | bytes | — | magic | ASCII `LB98` | all samples |
+| 0x04 | 1 | u8 | — | version_major | Format major version (2) | all samples |
+| 0x05 | 1 | u8 | — | version_minor | Format minor version (0 in s01/s02/s04, 1 in s03) | s01-s04 |
+| 0x06 | 2 | u16 | LE | declared_record_count | Number of records declared | s01-s04 |
+| 0x08 | 2 | u16 | LE | created_date | DOS FAT date: `((d >> 9) & 0x7F) + 1980`, `(d >> 5) & 0x0F`, `d & 0x1F` | log 2026-10-16 13:43 |
+| 0x0A | 2 | u16 | LE | created_time | DOS FAT time: `(t >> 11) & 0x1F`, `(t >> 5) & 0x3F`, `(t & 0x1F) * 2` | log 2026-10-16 13:43 |
+| 0x0C | 2 | u16 | LE | data_offset | Absolute start offset of records (16 for v2.0, 40 for v2.1) | s01-s04 |
+| 0x0E | 2 | u16 | LE | branch_id | Library branch identifier | s01-s04 |
+| 0x10 | data_offset - 16 | bytes | — | header_extension | Optional banner string padded with `\x00` (e.g. `LIBSYS/98 REL 2.1`) | s03 |
+
+### Records
+
+Records start at `data_offset` and follow sequentially back to back. Each record starts with marker `0xA5`, followed by a 1-byte payload length $N$ (the number of bytes from `flags` up to and including the record checksum). Total record length is $2 + N$.
+
+Fields in order:
+- `+0x00` (1B): record marker `0xA5`
+- `+0x01` (1B): payload length $N$
+- `+0x02` (1B): flags (bit 0 = `checked_out`, bit 1 = `reference_only`, bit 2 = `deleted`)
+- `+0x03` (4B u32le): book ID
+- `+0x07` (1B u8): title length $L_T$
+- `+0x08` ($L_T$ bytes): title string (CP437)
+- `+0x08 + L_T` (1B u8): author length $L_A$
+- `+0x09 + L_T` ($L_A$ bytes): author string (CP437)
+- `+0x09 + L_T + L_A` (2B u16le): year offset from 1500 (`year = year_offset + 1500`)
+- `+0x0B + L_T + L_A` (2B u16le): price in cents
+- `+0x0D + L_T + L_A` (1B u8): copy count
+- `+0x0E + L_T + L_A` (10B ASCII): ISBN string
+- `+0x18 + L_T + L_A` (2B u16le): due date (DOS FAT date, 0 if null)
+- `+0x1A + L_T + L_A` (1B u8): record checksum (sum8 over flags through due date)
+
+### Checksums
+
+1. Record checksum: 1-byte `sum8` over all payload bytes from `flags` to `due_date` (`sum(rec[2:-1]) & 0xFF`), stored as the last byte of each record. Verified on all 22 complete records across s01–s04.
+2. File trailer checksum: 2-byte `sum16` over all bytes from file offset 0 up to `END!` (`sum(data[:idx]) & 0xFFFF`), stored little-endian at `offset + 4` following `END!`. Verified on all clean samples (s01, s02, s03).
+
+### Compression and obfuscation
+
+None. All strings are plaintext CP437, and all numbers are plain little-endian integers.
+
+### Damage handling
+
+- Truncation: If the file ends before declared records finish (e.g. `s04.dat`), or during record header/payload reads, `DamageKind.TRUNCATED` is recorded covering the unread remainder.
+- Resync: If record marker `0xA5` is missing or record length is corrupted, `salvage.core.resync` scans forward for `0xA5` with valid length and matching `sum8`. Corrupted bytes are reported as `DamageKind.UNPARSED`.
+- Checksum mismatch: If a record's `sum8` fails, its status drops to `Status.UNVERIFIED` and `DamageKind.CHECKSUM` is reported over the record range.
+- Trailer truncation/mismatch: A missing or corrupt `END!` trailer produces `DamageKind.TRUNCATED` or `DamageKind.CHECKSUM`.
+
+### Open questions
+
+None. The binary structure, field encodings, bitflags, string character sets, and checksum formulas are fully explained and verified against all genuine samples and official reference outputs.
+
+## LABLOG
+
+### Summary
+
+LABLOG is a binary analytical-instrument data logger format (context hint: "Benchtop analytical-instrument data logger, chemistry lab, early 1990s"). Studied: `kit/samples/s05.dat` (229 bytes, clean 2-channel log from THERMO LOGGER), `kit/samples/s06.dat` (313 bytes, clean 3-channel log from FLOWCELL-2 containing dropouts), and `kit/samples/s07.dat` (334 bytes, 3-channel log from FLOWCELL-2 containing localized bit corruption in Block 5).
+
+### Identification
+
+Files begin with ASCII `LLOG` (`4C 4C 4F 47`) at offset 0x00 followed by major version 1 at 0x04. `probe()` requires at least 32 bytes, magic `LLOG`, version 1, and non-zero channel count. If the 16-bit CRC-16-CCITT at 0x1E matches bytes 0x00..0x1D, probe scores 1.0; if magic matches but header CRC is mismatched, probe scores 0.8. Extensions `.dat` and `.log` serve as hints.
+
+### Layout
+
+#### Header (32 bytes fixed)
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|---|---|---|---|---|---|---|
+| 0x00 | 4 | bytes | — | magic | ASCII `LLOG` (`4C 4C 4F 47`) | all samples |
+| 0x04 | 1 | u8 | — | version | Format major version (1) | all samples |
+| 0x05 | 1 | u8 | — | num_channels | Number of analog channels ($\ge 1$) | all samples |
+| 0x06 | 2 | u16 | LE | sample_interval | Sampling interval in centiseconds ($10\text{ ms}$ units) | all samples |
+| 0x08 | 16 | bytes | — | instrument | Null-padded ASCII instrument name | all samples |
+| 0x18 | 4 | u32 | LE | start_time | Start datetime as seconds since 1990-01-01 00:00:00 UTC | log 2026-10-16 15:43 |
+| 0x1C | 2 | u16 | LE | declared_block_count | Total number of blocks following the header | all samples |
+| 0x1E | 2 | u16 | LE | header_crc | CRC-16-CCITT over bytes 0x00..0x1D (poly 0x1021, init 0xFFFF) | log 2026-10-16 15:44 |
+
+#### Block Framing
+
+Blocks follow the 32-byte header contiguously back-to-back:
+- `+0x00` (1B): Sync marker `0xB1`
+- `+0x01` (1B): Block type (`0x03` = Channel Config, `0x01` = Data, `0x02` = Event)
+- `+0x02` (2B u16le): Payload length $L$
+- `+0x04` ($L$ bytes): Block payload
+- `+0x04 + L` (2B u16le): Trailer CRC-16-CCITT over `block[1 : 4 + L]` (type + length + payload)
+
+#### Block Types
+
+1. **Type 0x03 (Channel Configuration, Block 1):** Length is $\text{num\_channels} \times 12$. Each 12-byte descriptor contains:
+   - `+0x00` (4B ASCII): Unit name, null-padded (e.g. `mV`, `ppm`, `pH`, `kPa`, `degC`)
+   - `+0x04` (4B float32le): Linear calibration scale factor
+   - `+0x08` (4B float32le): Linear calibration offset value
+2. **Type 0x01 (Data Records):** Contains:
+   - `+0x00` (2B u16le): Start sample index
+   - `+0x02` (1B u8): Sample count $N$
+   - Followed by $N$ sample records, each consisting of $\text{num\_channels} \times 2$ bytes of signed 16-bit integers (`int16le`).
+   - Calibrated value: $\text{round}(\text{raw} \times \text{scale} + \text{offset}, 4)$.
+   - Dropout sentinel: raw `-32768` (`0x8000`) represents a dropout and maps to JSON `null`.
+   - Sample timestamp: $\text{time\_ms} = \text{sample} \times (\text{sample\_interval} \times 10)$.
+3. **Type 0x02 (Event Annotations):** Contains:
+   - `+0x00` (2B u16le): Associated sample index
+   - `+0x02` (1B u8): Severity level ($0$ = info/note, $1$ = run started, $2$ = warning/drift)
+   - `+0x03` (1B u8): Message length $M$
+   - `+0x04` ($M$ bytes ASCII): Event message text
+
+### Records
+
+Each recorded sample becomes one record containing three fields:
+- `sample`: integer sample index
+- `time_ms`: elapsed milliseconds since start time
+- `values`: array of calibrated float values (or `null` for channel dropouts)
+
+Records are emitted sequentially in sample index order.
+
+### Checksums
+
+1. **Header Checksum:** 2-byte CRC-16-CCITT (polynomial `0x1021`, initial value `0xFFFF`, no final XOR, little-endian) over bytes 0x00..0x1D (30 bytes). Stored at 0x1E..0x1F.
+2. **Block Checksums:** 2-byte CRC-16-CCITT (polynomial `0x1021`, initial value `0xFFFF`, no final XOR, little-endian) over bytes 1 through $4 + L$ of each block (type, length, and payload; excluding the marker `0xB1`). Stored at the final two bytes of each block.
+
+### Compression and obfuscation
+
+None. Strings are plaintext ASCII, timestamps and integers are little-endian binary, and analog values are linear 16-bit ADC counts.
+
+### Damage handling
+
+- **CRC Mismatch:** If a block fails its CRC check (e.g. Block 5 in `s07.dat`), `DamageKind.CHECKSUM` is reported over the block range, the block's records are marked `Status.UNVERIFIED`, and the file status drops to `partial`.
+- **Truncation:** If the file ends before declared blocks finish, or cuts short inside a header or block payload, `DamageKind.TRUNCATED` is recorded over the missing or incomplete range.
+- **Lost Synchronization:** If marker `0xB1` is not found where expected, `salvage.core.resync` searches forward for `0xB1` followed by a valid block type, in-bounds length, and matching CRC-16-CCITT. Skipped corrupted bytes are reported as `DamageKind.UNPARSED`.
+- **Invalid Structure:** Unknown block types, mismatched block lengths, or zero-channel headers produce `DamageKind.BOUNDS` or `DamageKind.UNPARSED`.
+
+### Open questions
+
+None. All fields, timestamps, block structures, checksum algorithms, and sample values across `s05.dat`–`s07.dat` are confirmed and fully explained.
 
 ## Output format — PROVISIONAL
 
