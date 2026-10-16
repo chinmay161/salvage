@@ -1,19 +1,22 @@
 """Decode each file in its own child process, so hangs and crashes stay contained.
 
 The child (:func:`process_file`) does all the work and returns plain dicts.
-The parent (:func:`run_isolated`) only starts it, waits with a timeout and
-cleans up; it never imports decoder modules itself.
+The parent (:class:`Worker`, :func:`run_isolated`) only starts it, waits
+with a timeout and cleans up; it never imports decoder modules itself.
+:class:`Worker` never blocks, so the pipeline can drive several at once.
 """
 
 from __future__ import annotations
 
 import multiprocessing
+import multiprocessing.connection
 import os
+import signal
 import stat
 import time
 from typing import Any, Callable, Iterable
 
-from salvage.core import caps, emit, fallback, identify, report
+from salvage.core import caps, emit, fallback, identify, limits, report
 from salvage.core.coverage import coverage
 from salvage.core.limits import MAX_FILE_BYTES
 from salvage.core.model import DecodeResult
@@ -27,6 +30,45 @@ def start_method() -> str:
 
 
 # -- child side ------------------------------------------------------------
+
+MEMORY_OUTCOME = "error: memory limit"   # attempt outcome for a MemoryError
+DISAPPEARED = "file disappeared"         # the input was deleted after the walk
+
+# Address-space cap set in this process by cap_memory(), in bytes (None: no cap).
+_memory_cap: int | None = None
+
+
+def cap_memory(limit: int | None = None) -> int | None:
+    """Cap this process's address space at ``limit`` (default MAX_WORKER_MEMORY).
+
+    POSIX only (``resource.setrlimit(RLIMIT_AS)``); a lower existing hard
+    limit is kept. Returns the cap now in force, or None where there is no
+    ``resource`` module (Windows) or it cannot be set. Call it in a worker
+    process only: the cap cannot be raised again.
+    """
+    global _memory_cap
+    try:
+        import resource
+    except ImportError:
+        return None
+    want = limits.MAX_WORKER_MEMORY if limit is None else limit
+    try:
+        _soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        if hard != resource.RLIM_INFINITY and 0 <= hard < want:
+            want = hard
+        resource.setrlimit(resource.RLIMIT_AS, (want, want))
+    except (ValueError, OSError):
+        return None
+    _memory_cap = want
+    return want
+
+
+def memory_reason() -> str:
+    """File-level error for a decode that ran out of memory."""
+    if _memory_cap is not None:
+        return f"memory limit ({_memory_cap // (1024 * 1024)} MiB)"
+    return "out of memory (no memory cap in this process)"
+
 
 def read_regular(path: str, limit: int = MAX_FILE_BYTES) -> bytes:
     """Read at most ``limit + 1`` bytes of a regular file.
@@ -58,8 +100,9 @@ def try_candidates(candidates: list[Decoder], data: bytes
     """Decode with each candidate in order until one gives a usable result.
 
     Outcomes: "ok" (stop), "empty" (no records and no members; the first is
-    kept as a fallback), "invalid: <first 3 problems>" and
-    "error: <Type>: <msg>" (both never emitted). Returns
+    kept as a fallback), "invalid: <first 3 problems>",
+    "error: <Type>: <msg>" and "error: memory limit" (a MemoryError; these
+    three are never emitted). Returns
     ``(result, decoder, attempts)``; result is None if nothing was usable.
     """
     result, dec, attempts, _ = _try_candidates(candidates, data)
@@ -77,6 +120,9 @@ def _try_candidates(candidates: list[Decoder], data: bytes
         reader = SafeReader(data)
         try:
             result = dec.decode(reader)
+        except MemoryError:
+            attempts.append((name, MEMORY_OUTCOME))
+            continue
         except (Exception, SystemExit) as exc:
             attempts.append((name, f"error: {_exc_text(exc)}"))
             continue
@@ -164,12 +210,16 @@ def process_file(path: str, rel: str, package: str = "salvage.formats",
     try:
         try:
             data = read_regular(path)
+        except FileNotFoundError:
+            return failed_payload(rel, None, DISAPPEARED)
         except (OSError, ValueError) as exc:
             why = getattr(exc, "strerror", None) or str(exc) or type(exc).__name__
             return failed_payload(rel, None, f"cannot read file: {why}")
         if len(data) > MAX_FILE_BYTES:
             return failed_payload(rel, None, f"too large (> {MAX_FILE_BYTES} bytes)")
         found = discover_decoders(package)
+    except MemoryError:
+        return failed_payload(rel, None, memory_reason())
     except BaseException as exc:  # noqa: BLE001 - the child reports everything as data
         return failed_payload(rel, None, f"internal error: {_exc_text(exc)}")
     return process_data(rel, data, found.decoders, found.errors, on_identified)
@@ -204,14 +254,17 @@ def process_data(rel: str, data: bytes, decoders: list[Decoder],
 
         result, dec, attempts, reader = _try_candidates(choice.candidates, data)
         if result is None or reader is None:
-            return _payload(rel, data, "failed", None, info, attempts,
-                            ["no candidate decoder produced a valid result"], errors_run)
+            why = (memory_reason() if any(o == MEMORY_OUTCOME for _, o in attempts)
+                   else "no candidate decoder produced a valid result")
+            return _payload(rel, data, "failed", None, info, attempts, [why], errors_run)
         capped = caps.enforce(result)
         status = "partial" if capped else report.file_status(result)
         return _payload(rel, data, status, result, info, attempts, [], errors_run,
                         used=str(getattr(dec, "name", "")), cov=coverage(reader))
     except BaseException as exc:  # noqa: BLE001 - the child reports everything as data
-        payload = failed_payload(rel, None, f"internal error: {_exc_text(exc)}", info)
+        why = (memory_reason() if isinstance(exc, MemoryError)
+               else f"internal error: {_exc_text(exc)}")
+        payload = failed_payload(rel, None, why, info)
         payload["run_errors"] = errors_run
         return payload
 
@@ -262,14 +315,23 @@ def failed_payload(rel: str, size: int | None, reason: str,
 
 
 def _child(conn: Any, path: str, rel: str, package: str) -> None:
-    """Child entry point: silence stdio, then send ("identified", info) right
-    after probing and ("done", payload) at the end."""
+    """Child entry point: silence stdio, restore default signal handling, cap
+    memory, then send ("identified", info) right after probing and ("done",
+    payload) at the end."""
     try:
         devnull = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, 1)
         os.dup2(devnull, 2)
     except OSError:
         pass
+    # A forked child inherits the parent's interrupt handlers: SIGTERM must
+    # kill it again, and Ctrl-C (sent to the whole group) is the parent's job.
+    for name, action in (("SIGTERM", signal.SIG_DFL), ("SIGINT", signal.SIG_IGN)):
+        try:
+            signal.signal(getattr(signal, name), action)
+        except (AttributeError, ValueError, OSError):
+            pass
+    cap_memory()
     sent: dict[str, Any] = {}
 
     def identified(info: dict[str, Any]) -> None:
@@ -289,85 +351,216 @@ def _child(conn: Any, path: str, rel: str, package: str) -> None:
 
 # -- parent side -----------------------------------------------------------
 
+EXIT_GRACE = 1.0   # seconds a worker that has answered gets to exit by itself
+TERM_GRACE = 2.0   # seconds after SIGTERM (terminate) before SIGKILL (kill)
+
+
+class Worker:
+    """Parent-side handle of one file's worker process; never blocks.
+
+    Drive it with :func:`drive` (or call :meth:`step` whenever one of
+    :meth:`handles` is ready or :meth:`wake_at` has passed). One deadline
+    of ``timeout`` seconds covers both messages: the child's ("identified",
+    info) right after probing and ("done", payload). Once the outcome is
+    known the child is reaped: a child that answered (or closed its pipe)
+    gets EXIT_GRACE seconds to exit by itself; then, or at once on a
+    timeout or a bad message, it is terminated (SIGTERM), and killed
+    (SIGKILL) TERM_GRACE seconds later if it is still alive, e.g. because
+    it ignores SIGTERM. No zombies, no orphans.
+    """
+
+    def __init__(self, path: str, rel: str, package: str, timeout: float,
+                 method: str | None = None) -> None:
+        ctx = multiprocessing.get_context(method or start_method())
+        self.rel = rel
+        self.timeout = timeout
+        self.info: dict[str, Any] | None = None
+        self.payload: Any = None
+        self.reason: str | None = None
+        self.done = False
+        self._phase = "running"   # running -> exiting / terminating / killing -> done
+        self._next = 0.0
+        self._exitcode: int | None = None
+        self._conn, send_conn = ctx.Pipe(duplex=False)
+        self.proc = ctx.Process(target=_child, args=(send_conn, path, rel, package),
+                                daemon=True)
+        try:
+            self.proc.start()
+        except BaseException:
+            send_conn.close()
+            self._conn.close()
+            raise
+        send_conn.close()  # so a dead child shows up as EOF, not a silent wait
+        self.deadline = time.monotonic() + timeout
+
+    def handles(self) -> list[Any]:
+        """What to wait on: the pipe while running, then the process sentinel."""
+        if self.done:
+            return []
+        return [self._conn] if self._phase == "running" else [self.proc.sentinel]
+
+    def wake_at(self) -> float:
+        """Monotonic time at which :meth:`step` must run even if nothing is ready."""
+        if self.done:
+            return float("inf")
+        return self.deadline if self._phase == "running" else self._next
+
+    def step(self, now: float | None = None) -> bool:
+        """Receive what is ready, enforce the deadline, reap; True once finished."""
+        now = time.monotonic() if now is None else now
+        if self._phase == "running":
+            self._receive(now)
+        if self._phase != "running" and not self.done:
+            self._reap(now)
+        return self.done
+
+    def kill(self) -> None:
+        """Stop at once (an interrupted run): terminate now, kill after TERM_GRACE."""
+        now = time.monotonic()
+        if self._phase == "running":
+            self.reason = self.reason or "interrupted"
+            self._close_conn()
+            self._escalate("terminating", now)
+        elif self._phase == "exiting":
+            self._escalate("terminating", now)
+
+    def result(self) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]:
+        """``(payload, None, info)`` or ``(None, reason, info)``; see :func:`run_isolated`."""
+        reason = self.reason
+        if reason == "crash":
+            reason = f"worker crashed with exit code {self._exitcode} ({_stage(self.info)})"
+        if reason is None and not (isinstance(self.payload, dict)
+                                   and isinstance(self.payload.get("output"), dict)
+                                   and isinstance(self.payload.get("entry"), dict)):
+            reason = f"bad payload from worker ({_stage(self.info)})"
+        return (None, reason, self.info) if reason else (self.payload, None, self.info)
+
+    # -- internals --
+
+    def _receive(self, now: float) -> None:
+        # Messages are received BEFORE reaping: a large payload would
+        # otherwise fill the pipe and deadlock.
+        while self.payload is None and self.reason is None:
+            stage = _stage(self.info)
+            try:
+                if not self._conn.poll(0):
+                    if time.monotonic() >= self.deadline:
+                        self.reason = f"timeout after {_secs(self.timeout)}s ({stage})"
+                    break
+                message = self._conn.recv()
+            except (EOFError, OSError):
+                self.reason = "crash"
+                break
+            except Exception as exc:  # unpickling a corrupt message
+                self.reason = f"bad payload from worker: {_exc_text(exc)} ({stage})"
+                break
+            if not (isinstance(message, tuple) and len(message) == 2):
+                self.reason = f"bad message from worker ({stage})"
+            elif message[0] == "identified" and self.info is None \
+                    and isinstance(message[1], dict):
+                self.info = message[1]
+            elif message[0] == "done":
+                self.payload = message[1]
+            else:
+                self.reason = f"bad message from worker ({stage})"
+        if self.payload is None and self.reason is None:
+            return
+        self._close_conn()
+        if self.payload is not None or self.reason == "crash":
+            self._escalate("exiting", now)      # finishing (or gone) by itself
+        else:
+            self._escalate("terminating", now)  # timeout or a bad message: stop it now
+
+    def _escalate(self, phase: str, now: float) -> None:
+        self._phase = phase
+        self._next = now + (EXIT_GRACE if phase == "exiting" else TERM_GRACE)
+        try:
+            if phase == "terminating":
+                self.proc.terminate()
+            elif phase == "killing":
+                self.proc.kill()
+        except Exception:  # pragma: no cover - defensive (already gone)
+            pass
+
+    def _reap(self, now: float) -> None:
+        try:
+            alive = self.proc.is_alive()
+        except Exception:  # pragma: no cover - defensive
+            alive = False
+        if not alive:
+            self._finish()
+        elif now >= self._next:
+            if self._phase == "exiting":
+                self._escalate("terminating", now)
+            elif self._phase == "terminating":
+                self._escalate("killing", now)
+            else:  # pragma: no cover - SIGKILL cannot be ignored; keep waiting
+                self._next = now + TERM_GRACE
+
+    def _finish(self) -> None:
+        try:
+            self.proc.join(0)
+            self._exitcode = self.proc.exitcode
+            self.proc.close()
+        except Exception:  # pragma: no cover - defensive
+            pass
+        self.done = True
+        self._phase = "done"
+
+    def _close_conn(self) -> None:
+        try:
+            self._conn.close()
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+
+def drive(workers: list[Worker], max_wait: float | None = None) -> None:
+    """Wait until one of ``workers`` needs attention (at most ``max_wait`` s), then step each.
+
+    Never waits past the earliest :meth:`Worker.wake_at`.
+    """
+    live = [w for w in workers if not w.done]
+    if not live:
+        return
+    wait = max(0.0, min(w.wake_at() for w in live) - time.monotonic())
+    if max_wait is not None:
+        wait = min(wait, max_wait)
+    handles = [h for w in live for h in w.handles()]
+    try:
+        multiprocessing.connection.wait(handles, wait)
+    except (OSError, ValueError):  # pragma: no cover - a handle closed under us
+        pass
+    now = time.monotonic()
+    for w in live:
+        w.step(now)
+
+
 def run_isolated(path: str, rel: str, package: str, timeout: float,
                  method: str | None = None
                  ) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]:
-    """Run :func:`process_file` in a child process.
+    """Run :func:`process_file` in a child process and wait for it.
 
     Returns ``(payload, None, info)`` on success or ``(None, reason, info)``
     on timeout, crash or a bad message. ``info`` is the child's
     "identified" message (None if it never arrived), so a later failure
-    still knows the identification. One deadline of ``timeout`` seconds
-    covers both messages; ``reason`` names the stage reached ("(during
-    probe)" before the "identified" message, "(during decode)" after it).
-    Messages are received BEFORE joining (a large payload would otherwise
-    fill the pipe and deadlock). Afterwards the child is joined, then
-    terminated, then killed: no zombies, no orphans.
+    still knows the identification. ``reason`` names the stage reached
+    ("(during probe)" before the "identified" message, "(during decode)"
+    after it). The child is reaped before this returns (see :class:`Worker`).
     """
-    ctx = multiprocessing.get_context(method or start_method())
-    recv_conn, send_conn = ctx.Pipe(duplex=False)
-    proc = ctx.Process(target=_child, args=(send_conn, path, rel, package), daemon=True)
-    payload: Any = None
-    info: dict[str, Any] | None = None
-    reason: str | None = None
-    deadline = time.monotonic() + timeout
+    worker = Worker(path, rel, package, timeout, method)
     try:
-        proc.start()
-        send_conn.close()  # so a dead child shows up as EOF, not a silent wait
-        while payload is None and reason is None:
-            stage = _stage(info)
-            try:
-                if not recv_conn.poll(max(0.0, deadline - time.monotonic())):
-                    reason = f"timeout after {_secs(timeout)}s ({stage})"
-                    break
-                message = recv_conn.recv()
-            except (EOFError, OSError):
-                reason = "crash"
-                break
-            except Exception as exc:  # unpickling a corrupt message
-                reason = f"bad payload from worker: {_exc_text(exc)} ({stage})"
-                break
-            if not (isinstance(message, tuple) and len(message) == 2):
-                reason = f"bad message from worker ({stage})"
-            elif message[0] == "identified" and info is None and isinstance(message[1], dict):
-                info = message[1]
-            elif message[0] == "done":
-                payload = message[1]
-            else:
-                reason = f"bad message from worker ({stage})"
+        while not worker.done:
+            drive([worker])
     finally:
-        _reap(proc)
-        recv_conn.close()
-    if reason == "crash":
-        reason = f"worker crashed with exit code {proc.exitcode} ({_stage(info)})"
-    try:
-        proc.close()
-    except ValueError:
-        pass
-    if reason is None and not (isinstance(payload, dict)
-                               and isinstance(payload.get("output"), dict)
-                               and isinstance(payload.get("entry"), dict)):
-        reason = f"bad payload from worker ({_stage(info)})"
-    return (None, reason, info) if reason else (payload, None, info)
+        if not worker.done:  # only after an exception above
+            worker.kill()
+            while not worker.done:
+                drive([worker])
+    return worker.result()
 
 
 def _stage(info: dict[str, Any] | None) -> str:
     return "during probe" if info is None else "during decode"
-
-
-def _reap(proc: Any) -> None:
-    try:
-        if proc.pid is None:
-            return
-        proc.join(1)
-        if proc.is_alive():
-            proc.terminate()
-            proc.join(2)
-        if proc.is_alive():
-            proc.kill()
-            proc.join()
-    except Exception:  # pragma: no cover - defensive
-        pass
 
 
 def _secs(timeout: float) -> str:

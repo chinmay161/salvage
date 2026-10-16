@@ -5,7 +5,8 @@
   "description": "Describes exactly the shape in docs/output-format.md. Replaced by the organizers' schema when it arrives.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["tool", "version", "schema_version", "summary", "files", "skipped", "errors"],
+  "required": ["tool", "version", "schema_version", "summary", "files", "skipped",
+               "warnings", "errors"],
   "properties": {
     "tool": {"const": "salvage"},
     "version": {"type": "string", "minLength": 1},
@@ -37,6 +38,7 @@
         }
       }
     },
+    "warnings": {"$ref": "#/$defs/strings"},
     "errors": {"$ref": "#/$defs/strings"}
   },
   "$defs": {

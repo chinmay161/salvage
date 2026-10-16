@@ -83,7 +83,7 @@ def new_report() -> dict[str, Any]:
     """An empty report; :func:`summarize` fills in the summary."""
     rep: dict[str, Any] = {
         "tool": "salvage", "version": __version__, "schema_version": validate.version("report"),
-        "summary": {}, "files": [], "skipped": [], "errors": [],
+        "summary": {}, "files": [], "skipped": [], "warnings": [], "errors": [],
     }
     summarize(rep)
     return rep
