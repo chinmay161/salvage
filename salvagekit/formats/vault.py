@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import struct
+import zlib
 from typing import Any
 
 from salvagekit.core.limits import MAX_DECOMPRESSED
@@ -307,8 +309,9 @@ class VaultDecoder(Decoder):
                     name = dec_bytes.decode("latin-1", errors="replace")
                 filenames[i] = name
 
-        # --- Chunks and Payloads ---
+        # --- Chunks and Records ---
         decompressed_so_far = 0
+        verified_count = 0
 
         for entry in entries:
             i = entry["idx"]
@@ -317,7 +320,11 @@ class VaultDecoder(Decoder):
             decoded_sz = entry["decoded_sz"]
             rec_id = entry["id"]
             rec_flags = entry["rec_flags"]
+            type_code = entry["type_code"]
             name = filenames.get(i, f"entry_{rec_id}")
+            str_abs_offset = name_offsets_abs.get(i, entry["entry_start"])
+            name_len = name_lengths.get(i, 0)
+            name_field_len = min(1 + name_len, max(0, file_size - str_abs_offset))
 
             if stored_sz < 4:
                 result.damage.append(
@@ -351,7 +358,9 @@ class VaultDecoder(Decoder):
                 stored_payload = reader.bytes(payload_len, f"chunk[{i}].payload")
                 stored_crc = reader.u32le(f"chunk[{i}].crc")
 
+                framing_ok = True
                 if marker != CHUNK_MARKER:
+                    framing_ok = False
                     result.damage.append(
                         Damage(
                             data_off,
@@ -361,6 +370,7 @@ class VaultDecoder(Decoder):
                         )
                     )
                 if chunk_id != rec_id:
+                    framing_ok = False
                     result.damage.append(
                         Damage(
                             data_off + 2,
@@ -379,6 +389,7 @@ class VaultDecoder(Decoder):
                     p_xor = stored_payload
 
                 # Step 2: Decompress ARC RLE if flag bit 0 is set
+                rle_corrupt = False
                 if rec_flags & 0x01:
                     budget = max(0, MAX_DECOMPRESSED - decompressed_so_far)
                     decoded_payload, rle_err_kind, rle_err_reason = _decompress_arc_rle(
@@ -386,6 +397,7 @@ class VaultDecoder(Decoder):
                     )
                     decompressed_so_far += len(decoded_payload)
                     if rle_err_kind is not None:
+                        rle_corrupt = True
                         result.damage.append(
                             Damage(
                                 data_off + 4,
@@ -398,7 +410,8 @@ class VaultDecoder(Decoder):
                     decoded_payload = p_xor
 
                 # Check decoded payload length
-                if len(decoded_payload) != decoded_sz:
+                length_ok = len(decoded_payload) == decoded_sz
+                if not length_ok and not rle_corrupt:
                     result.damage.append(
                         Damage(
                             data_off + 4,
@@ -408,6 +421,117 @@ class VaultDecoder(Decoder):
                         )
                     )
 
+                # Step 3 & 4: CRC-32 & SHA-256
+                computed_crc = zlib.crc32(decoded_payload)
+                sha256_hex = hashlib.sha256(decoded_payload).hexdigest()
+
+                issues: list[DamageKind] = []
+                crc_match = stored_crc is not None and computed_crc == stored_crc
+                payload_source_len = min(payload_len, max(0, file_size - (data_off + 4)))
+
+                if crc_match and framing_ok and length_ok and not rle_corrupt:
+                    rec_status = Status.VERIFIED
+                    evidence = f"CRC-32 {computed_crc:#010x} matches stored value"
+                    verified_count += 1
+                else:
+                    rec_status = Status.UNVERIFIED
+                    if stored_crc is None:
+                        evidence = "CRC-32 trailer cut short"
+                        issues.append(DamageKind.TRUNCATED)
+                    elif not crc_match:
+                        evidence = f"CRC-32 mismatch: stored {stored_crc:#010x}, computed {computed_crc:#010x}"
+                        issues.append(DamageKind.CRC_MISMATCH)
+                        result.damage.append(
+                            Damage(
+                                data_off + 4,
+                                data_off + stored_sz,
+                                DamageKind.CRC_MISMATCH,
+                                f"record {rec_id} ({name}): {evidence}",
+                                lossy=False,
+                            )
+                        )
+                    else:
+                        evidence = "payload validation failed"
+                        issues.append(DamageKind.BAD_LENGTH)
+
+                # Map type code to contract string
+                if type_code == 1:
+                    type_str = "text"
+                elif type_code == 2:
+                    type_str = "bitmap"
+                elif type_code == 3:
+                    type_str = "binary"
+                else:
+                    type_str = "binary"
+                    issues.append(DamageKind.UNKNOWN_RECORD)
+                    result.damage.append(
+                        Damage(
+                            entry["entry_start"] + 2,
+                            entry["entry_start"] + 3,
+                            DamageKind.UNKNOWN_RECORD,
+                            f"record {rec_id} ({name}): unknown type code {type_code}",
+                            lossy=False,
+                        )
+                    )
+
+                # Build fields in contract shape order
+                fields = [
+                    Field("id", rec_id, entry["entry_start"], 2, Status.CONSISTENT, "record ID"),
+                    Field("name", name, str_abs_offset, name_field_len, Status.CONSISTENT, "decoded filename"),
+                    Field("type", type_str, entry["entry_start"] + 2, 1, Status.CONSISTENT, f"type code {type_code}"),
+                    Field("size", decoded_sz, entry["entry_start"] + 14, 2, Status.CONSISTENT, "decoded size"),
+                    Field("sha256", sha256_hex, data_off + 4, payload_source_len, rec_status, evidence),
+                    Field("compressed", bool(rec_flags & 0x01), entry["entry_start"] + 3, 1, Status.CONSISTENT, "compression flag"),
+                ]
+
+                if type_str == "text":
+                    try:
+                        text_val = decoded_payload.decode("utf-8")
+                    except UnicodeDecodeError:
+                        text_val = decoded_payload.decode("latin-1", errors="replace")
+                    fields.append(
+                        Field("text", text_val, data_off + 4, payload_source_len, rec_status, evidence)
+                    )
+                elif type_str == "bitmap":
+                    if len(decoded_payload) >= 2:
+                        width = decoded_payload[0]
+                        height = decoded_payload[1]
+                        fields.append(
+                            Field("width", width, data_off + 4, min(1, payload_source_len), rec_status, "bitmap width")
+                        )
+                        fields.append(
+                            Field("height", height, data_off + 5, min(1, max(0, payload_source_len - 1)), rec_status, "bitmap height")
+                        )
+                    else:
+                        fields.append(
+                            Field("width", None, data_off + 4, 0, Status.LOST, "bitmap payload too short for dimensions")
+                        )
+                        fields.append(
+                            Field("height", None, data_off + 4, 0, Status.LOST, "bitmap payload too short for dimensions")
+                        )
+
+                record = Record(
+                    offset=data_off,
+                    status=rec_status,
+                    kind="record",
+                    fields=fields,
+                    issues=issues,
+                )
+                result.records.append(record)
+
+        # Cross checks
+        if len(result.records) != entry_count and not result.damage:
+            result.damage.append(
+                Damage(
+                    4,
+                    6,
+                    DamageKind.COUNT_MISMATCH,
+                    f"header says {entry_count}, {len(result.records)} records found",
+                    lossy=len(result.records) < entry_count,
+                )
+            )
+
+        result.confidence = 1.0 if verified_count > 0 else 0.6
         return result
 
 
