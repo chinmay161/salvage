@@ -24,6 +24,48 @@ INDEX_ENTRY_SIZE = 16
 CHUNK_MARKER = b"BL"
 
 
+def _decompress_arc_rle(
+    data: bytes,
+    expected_size: int,
+    budget: int,
+) -> tuple[bytes, DamageKind | None, str | None]:
+    """Decompress ARC-style RLE (0x90 escape byte).
+
+    Returns (decompressed_bytes, damage_kind_if_error, error_reason).
+    """
+    out = bytearray()
+    idx = 0
+    n = len(data)
+    cap = min(expected_size, budget)
+
+    while idx < n:
+        b = data[idx]
+        idx += 1
+        if b == 0x90:
+            if idx >= n:
+                return bytes(out), DamageKind.BAD_LENGTH, "truncated 0x90 escape sequence at end of payload"
+            cnt = data[idx]
+            idx += 1
+            if cnt == 0:
+                if len(out) + 1 > cap:
+                    return bytes(out), DamageKind.BAD_LENGTH, "decompression expansion limit exceeded"
+                out.append(0x90)
+            else:
+                if len(out) == 0:
+                    return bytes(out), DamageKind.BAD_LENGTH, f"0x90 escape with count {cnt} without preceding byte"
+                prev = out[-1]
+                repeat_count = cnt - 1
+                if len(out) + repeat_count > cap:
+                    return bytes(out), DamageKind.BAD_LENGTH, "decompression expansion limit exceeded"
+                out.extend([prev] * repeat_count)
+        else:
+            if len(out) + 1 > cap:
+                return bytes(out), DamageKind.BAD_LENGTH, "decompression expansion limit exceeded"
+            out.append(b)
+
+    return bytes(out), None, None
+
+
 class VaultDecoder(Decoder):
     """Decoder for the VAULT container archive format."""
 
@@ -186,10 +228,15 @@ class VaultDecoder(Decoder):
 
         # --- String table ---
         filenames: dict[int, str] = {}
+        name_lengths: dict[int, int] = {}
+        name_offsets_abs: dict[int, int] = {}
+
         for entry in entries:
             i = entry["idx"]
             name_off = entry["name_offset"]
             str_abs_offset = string_table_offset + name_off
+            name_offsets_abs[i] = str_abs_offset
+
             if str_abs_offset >= index_offset or str_abs_offset < string_table_offset:
                 result.damage.append(
                     Damage(
@@ -200,6 +247,7 @@ class VaultDecoder(Decoder):
                     )
                 )
                 filenames[i] = f"record_{entry['id']}.bin"
+                name_lengths[i] = 0
                 continue
 
             with reader.at(str_abs_offset) as ok:
@@ -213,6 +261,7 @@ class VaultDecoder(Decoder):
                         )
                     )
                     filenames[i] = f"record_{entry['id']}.bin"
+                    name_lengths[i] = 0
                     continue
 
                 raw_len = reader.u8(f"string[{i}].len")
@@ -226,9 +275,12 @@ class VaultDecoder(Decoder):
                         )
                     )
                     filenames[i] = f"record_{entry['id']}.bin"
+                    name_lengths[i] = 0
                     continue
 
                 name_len = (raw_len ^ xor_key) if (flags & 0x01) else raw_len
+                name_lengths[i] = name_len
+
                 if str_abs_offset + 1 + name_len > index_offset:
                     result.damage.append(
                         Damage(
@@ -255,11 +307,17 @@ class VaultDecoder(Decoder):
                     name = dec_bytes.decode("latin-1", errors="replace")
                 filenames[i] = name
 
-        # --- Chunks framing validation ---
+        # --- Chunks and Payloads ---
+        decompressed_so_far = 0
+
         for entry in entries:
             i = entry["idx"]
             data_off = entry["data_offset"]
             stored_sz = entry["stored_sz"]
+            decoded_sz = entry["decoded_sz"]
+            rec_id = entry["id"]
+            rec_flags = entry["rec_flags"]
+            name = filenames.get(i, f"entry_{rec_id}")
 
             if stored_sz < 4:
                 result.damage.append(
@@ -290,8 +348,8 @@ class VaultDecoder(Decoder):
                 marker = reader.bytes(2, f"chunk[{i}].marker")
                 chunk_id = reader.u16le(f"chunk[{i}].id")
                 payload_len = stored_sz - 4
-                reader.bytes(payload_len, f"chunk[{i}].payload")
-                reader.u32le(f"chunk[{i}].crc")
+                stored_payload = reader.bytes(payload_len, f"chunk[{i}].payload")
+                stored_crc = reader.u32le(f"chunk[{i}].crc")
 
                 if marker != CHUNK_MARKER:
                     result.damage.append(
@@ -302,13 +360,51 @@ class VaultDecoder(Decoder):
                             f"entry {i} chunk marker mismatch: expected {CHUNK_MARKER!r}, got {marker!r}",
                         )
                     )
-                if chunk_id != entry["id"]:
+                if chunk_id != rec_id:
                     result.damage.append(
                         Damage(
                             data_off + 2,
                             data_off + 4,
                             DamageKind.INVALID_VALUE,
-                            f"entry {i} chunk ID mismatch: expected {entry['id']}, got {chunk_id}",
+                            f"entry {i} chunk ID mismatch: expected {rec_id}, got {chunk_id}",
+                        )
+                    )
+
+                # Step 1: De-XOR payload if flag bit 1 is set
+                if rec_flags & 0x02:
+                    p_xor = bytes(
+                        b ^ ((xor_key + j) & 0xFF) for j, b in enumerate(stored_payload)
+                    )
+                else:
+                    p_xor = stored_payload
+
+                # Step 2: Decompress ARC RLE if flag bit 0 is set
+                if rec_flags & 0x01:
+                    budget = max(0, MAX_DECOMPRESSED - decompressed_so_far)
+                    decoded_payload, rle_err_kind, rle_err_reason = _decompress_arc_rle(
+                        p_xor, decoded_sz, budget
+                    )
+                    decompressed_so_far += len(decoded_payload)
+                    if rle_err_kind is not None:
+                        result.damage.append(
+                            Damage(
+                                data_off + 4,
+                                data_off + stored_sz,
+                                rle_err_kind,
+                                f"record {rec_id} ({name}): {rle_err_reason}",
+                            )
+                        )
+                else:
+                    decoded_payload = p_xor
+
+                # Check decoded payload length
+                if len(decoded_payload) != decoded_sz:
+                    result.damage.append(
+                        Damage(
+                            data_off + 4,
+                            data_off + stored_sz,
+                            DamageKind.BAD_LENGTH,
+                            f"record {rec_id} ({name}): decoded size {len(decoded_payload)} != expected {decoded_sz}",
                         )
                     )
 
