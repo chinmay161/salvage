@@ -1,0 +1,20 @@
+{
+  "source_file": "trailer_cut.bravo",
+  "format": "BRAVO",
+  "status": "partial",
+  "metadata": {},
+  "records": [
+    {
+      "index": 0,
+      "text": "Paragraph."
+    }
+  ],
+  "damage": [
+    {
+      "kind": "truncated",
+      "offset": 12,
+      "detail": "incomplete formatting trailer",
+      "lossy": true
+    }
+  ]
+}

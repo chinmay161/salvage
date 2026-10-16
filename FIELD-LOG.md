@@ -9,7 +9,8 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 | Format | Entries | Confirmed | Rejected | Inconclusive |
 |--------|--------:|----------:|---------:|-------------:|
 | WKS | 8 | 7 | 1 | 0 |
-| **Total** | **8** | **7** | **1** | **0** |
+| BRAVO | 5 | 4 | 1 | 0 |
+| **Total** | **13** | **11** | **2** | **0** |
 
 ## Entries
 
@@ -33,6 +34,16 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 
 **Result:** CONFIRMED. Range bounds are 4 uint16le values `(col_start, row_start, col_end, row_end)`.
 
+### 2026-10-16 13:58 — [BRAVO] Paragraph separator is CR (0x0D) rather than LF (0x0A)
+
+**Hypothesis:** Paragraphs in Xerox Alto Bravo files are delimited by ASCII carriage return `\r` (`0x0D`).
+
+**Tried:** Examined text stream bytes before Ctrl-Z in `kit/samples/s16.bravo` and `s17.bravo`.
+
+**Evidence:** In `s16.bravo`, lines are separated by `0x0D`: `"To: Alto users\r"`, `"From: Documentation\r"`, `"\r"`, `"The new editor supports looks...\r"`, `"End of memo.\r"`. No `0x0A` (line feed) bytes appear anywhere in the file. Similarly, in `s17.bravo`, all 5 paragraphs end with `0x0D`.
+
+**Result:** CONFIRMED. Paragraph boundary is `\r` (0x0D).
+
 ### 2026-10-16 14:02 — [WKS] Opcode 0x0008 represents column width settings
 
 **Hypothesis:** Opcode 0x0008 stores column width overrides.
@@ -42,6 +53,16 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 **Evidence:** In `s11.wks`, byte 0-1 is column index 0 (`A`), and byte 2 is `0x0e` (14). This matches `"column_widths": {"A": 14}` in `s11.wks.json`. In `s12.wks`, column 0 has width 20 and column 1 has width 12.
 
 **Result:** CONFIRMED. Structure is `<HB` (col uint16le, width uint8).
+
+### 2026-10-16 14:02 — [BRAVO] Ctrl-Z (0x1A) separates document text from formatting trailer
+
+**Hypothesis:** ASCII Ctrl-Z (`0x1A`) marks the boundary between plain paragraph text and the trailing formatting descriptor block.
+
+**Tried:** Located `0x1A` in `s16.bravo` and `s17.bravo` and inspected preceding and following bytes.
+
+**Evidence:** In `s16.bravo`, `0x1A` appears at offset 128 (0x80). Bytes 0..127 contain ASCII text. Bytes 129..143 contain 15 binary trailer bytes. In `s17.bravo`, `0x1A` appears at offset 127 (0x7F), followed by 17 binary trailer bytes.
+
+**Result:** CONFIRMED. Text terminates at `0x1A`.
 
 ### 2026-10-16 14:05 — [WKS] Cell opcodes: 0x0c (blank), 0x0d (integer), 0x0e (number), 0x0f (label), 0x10 (formula)
 
@@ -58,6 +79,16 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 
 **Result:** CONFIRMED. All cell types match reference expected outputs.
 
+### 2026-10-16 14:06 — [BRAVO] Formatting trailer ends with a carriage return
+
+**Hypothesis:** The project brief suggests that the formatting trailer ends at a carriage return.
+
+**Tried:** Inspected the final bytes of `s16.bravo` and `s17.bravo`.
+
+**Evidence:** The last bytes of `s16.bravo` are `0f 06 00`. The last bytes of `s17.bravo` are `00 61 00`. Neither file has `0x0D` (`\r`) anywhere in the trailer block.
+
+**Result:** REJECTED. The trailer consists of binary descriptor records extending to EOF without a trailing carriage return.
+
 ### 2026-10-16 14:08 — [WKS] Label alignment prefixes strip from cell value
 
 **Hypothesis:** The first character of label payload after coordinates is an alignment prefix that must be mapped to `alignment` and stripped from `value`.
@@ -72,6 +103,16 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 
 **Result:** CONFIRMED. Prefix character determines alignment and is stripped from the output value.
 
+### 2026-10-16 14:10 — [BRAVO] Empty paragraphs produce empty text strings
+
+**Hypothesis:** Consecutive carriage returns (`\r\r`) represent empty paragraphs that must be preserved as records with `text: ""`.
+
+**Tried:** Analyzed paragraph sequence in `s16.bravo` and `s17.bravo`.
+
+**Evidence:** In `s16.bravo`, paragraph 1 is `"From: Documentation"`, followed by `\r\r`, then paragraph 3. The empty line at index 2 separates memo headers from memo body, matching standard document layout.
+
+**Result:** CONFIRMED. Empty paragraphs are emitted as `text: ""`.
+
 ### 2026-10-16 14:12 — [WKS] Number format 0x22 should be emitted on all cells
 
 **Hypothesis:** Every formatted cell (such as format byte 0x22 for currency) should emit a `number_format` field in reference JSON.
@@ -81,6 +122,16 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 **Evidence:** `s11.wks.json` has only `{'cell', 'col', 'row', 'type', 'value'}` for C2 and `{'cell', 'col', 'row', 'type', 'cached_value', 'formula_raw_hex'}` for D2. No `number_format` key exists anywhere in `s11.wks.json`. Emitting `number_format` causes a key mismatch against reference output.
 
 **Result:** REJECTED. In reference output calibration, standard currency/general format is not emitted as an explicit `number_format` string unless required by specific date formatting.
+
+### 2026-10-16 14:14 — [BRAVO] Formatting trailer character run offsets
+
+**Hypothesis:** Binary trailer contains format runs with character start offsets and lengths.
+
+**Tried:** Cross-referenced trailer uint16 values with styled words in the text.
+
+**Evidence:** In `s16.bravo`, the word `"Bold"` starts at character index 67 (0x43). The trailer contains `43 00` (`0x0043` = 67). In `s17.bravo`, the word `"Ethernet"` starts at index 9 (`09 00`), and `"2.9 Mbps"` starts at index 42 (`2a 00`). Both appear in the trailer preceded by run descriptors.
+
+**Result:** CONFIRMED. Trailer encodes formatting runs referencing character offsets.
 
 ### 2026-10-16 14:15 — [WKS] Lotus 1-2-3 date epoch and leap year bug
 
