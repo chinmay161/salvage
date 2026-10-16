@@ -8,8 +8,178 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 
 | Format | Entries | Confirmed | Rejected | Inconclusive |
 |--------|--------:|----------:|---------:|-------------:|
-| **Total** | **0** | **0** | **0** | **0** |
+| LIBRA-98 | 6 | 5 | 1 | 0 |
+| LABLOG | 11 | 9 | 2 | 0 |
+| **Total** | **17** | **14** | **3** | **0** |
 
 ## Entries
 
-No entries yet.
+### 2026-10-16 13:43 — [LIBRA-98] Magic bytes and header structure
+
+**Hypothesis:** The file begins with a 4-byte ASCII magic and 16-byte fixed header.
+
+**Tried:** Examined initial bytes of `kit/samples/s01.dat`–`s04.dat` and `s29_almost_libra.dat`.
+
+**Evidence:** Bytes 0-3 are `4C 42 39 38` (`LB98`) in all five files. In s01-s04, offset 4 is version `0x02`, offset 6 is declared count, offset 12 is data offset (16 in s01/s02/s04, 40 in s03), and offset 14 is branch ID. `s29_almost_libra.dat` is only 7 bytes long and cut short mid-count.
+
+**Result:** CONFIRMED
+
+### 2026-10-16 13:44 — [LIBRA-98] Created timestamp representation
+
+**Hypothesis:** Bytes 8-11 represent created datetime as a 32-bit Unix epoch.
+
+**Tried:** Parsed bytes 8-11 of `s01.dat` (`43 25 8b 5a`) as Unix timestamp.
+
+**Evidence:** Produced year 2018, which conflicts with expected output `"1998-10-03T11:20:22"`. Tested DOS FAT date/time bit-packing: `0x2543` yields 1998-10-03 and `0x5A8B` yields 11:20:22. Verified identical packing in `s02`, `s03`, and `s04`.
+
+**Result:** REJECTED for Unix epoch; CONFIRMED as DOS FAT datetime (u16le date, u16le time).
+
+### 2026-10-16 13:47 — [LIBRA-98] Record framing and length field
+
+**Hypothesis:** Each record starts with marker `0xA5` followed by a u16 length field.
+
+**Tried:** Checked bytes following marker `0xA5` across all records in `s01.dat`.
+
+**Evidence:** In record 0, byte 1 was 43 and byte 2 was 0. In record 1 (checked out), byte 1 was 62 and byte 2 was 1. Byte 1 is an 8-bit payload length, and byte 2 is an 8-bit flag field where bit 0 is `checked_out`, bit 1 is `reference_only`, and bit 2 is `deleted`. Total record length is exactly `2 + payload_len`.
+
+**Result:** CONFIRMED
+
+### 2026-10-16 13:50 — [LIBRA-98] Publication year representation
+
+**Hypothesis:** Year is stored as a direct 16-bit integer.
+
+**Tried:** Unpacked year field as u16le in `s01.dat`.
+
+**Evidence:** Stored values were 397 (for 1897), 366 (for 1866), 425 (for 1925), 318 (for 1818), 422 (for 1922). Each value is offset from epoch 1500 (`year = stored + 1500`).
+
+**Result:** CONFIRMED
+
+### 2026-10-16 13:52 — [LIBRA-98] Record checksum algorithm
+
+**Hypothesis:** The final byte of each record is a CRC-8 or XOR-8 checksum.
+
+**Tried:** Tested CRC-8 presets, XOR-8, and SUM-8 over candidate payload spans.
+
+**Evidence:** `sum(payload[2:-1]) & 0xFF` exactly matches the final byte for all 22 complete records across `s01.dat`–`s04.dat`. Start offset must be 2 to include the flags byte.
+
+**Result:** CONFIRMED as 8-bit byte sum mod 256.
+
+### 2026-10-16 13:54 — [LIBRA-98] File trailer structure and checksum
+
+**Hypothesis:** The file ends with an ASCII `END!` marker and 16-bit CRC.
+
+**Tried:** Located `END!` in clean samples `s01`, `s02`, `s03` and tested 16-bit checksums over the preceding file data.
+
+**Evidence:** `b"END!"` is located at the end of records, followed by a 2-byte little-endian integer. `sum(file_data[:trailer_idx]) & 0xFFFF` matched the stored integer in all three clean files. In `s04.dat`, the trailer is absent due to truncation.
+
+**Result:** CONFIRMED as `b"END!"` followed by u16le sum16 over all preceding bytes.
+
+### 2026-10-16 15:42 — [LABLOG] Magic bytes, header structure, and instrument identification
+
+**Hypothesis:** LABLOG files begin with a 4-byte ASCII magic and a 32-byte fixed header.
+
+**Tried:** Examined initial bytes of `kit/samples/s05.dat`, `s06.dat`, and `s07.dat`.
+
+**Evidence:** Bytes 0-3 are `4C 4C 4F 47` (`LLOG`) in all three files. Byte 4 is version `0x01`. Byte 5 is channel count (2 in s05, 3 in s06/s07). Bytes 6-7 are sample interval in centiseconds. Bytes 8-23 are a 16-byte null-padded ASCII instrument string (`THERMO LOGGER` in s05, `FLOWCELL-2` in s06/s07). Bytes 24-27 are start timestamp. Bytes 28-29 are declared block count (7 in s05, 8 in s06/s07). Bytes 30-31 are header checksum. Total header size is exactly 32 bytes (0x00–0x1F).
+
+**Result:** CONFIRMED
+
+### 2026-10-16 15:43 — [LABLOG] Start timestamp epoch representation
+
+**Hypothesis:** Bytes 24-27 represent start datetime as standard 32-bit Unix epoch (seconds since 1970).
+
+**Tried:** Unpacked bytes 24-27 of `s05.dat` (`1f 19 39 05`) as u32le and converted from 1970 Unix epoch.
+
+**Evidence:** 1970 epoch gave datetime 1972-10-11, whereas official expected output `s05.dat.json` states `"1992-10-11T05:07:43Z"`. Testing offset epoch 1990-01-01 00:00:00 UTC ($631,152,000$ Unix timestamp) plus stored value $87,628,063$ yields exactly $718,780,063$, which converts to `1992-10-11T05:07:43Z`. Applied to `s06.dat` this yields `1993-09-01T20:06:50Z` and to `s07.dat` yields `1994-04-02T21:02:06Z`.
+
+**Result:** REJECTED for 1970 Unix epoch; CONFIRMED as seconds since 1990-01-01 00:00:00 UTC (u32le).
+
+### 2026-10-16 15:44 — [LABLOG] Sample interval unit
+
+**Hypothesis:** Bytes 6-7 store the sample interval directly in milliseconds.
+
+**Tried:** Unpacked bytes 6-7 as u16le across s05, s06, and s07.
+
+**Evidence:** In `s05.dat`, stored value is 50 (`0x0032`), but `s05.dat.json` specifies `"sample_interval_ms": 500`. Stored value is in centiseconds ($10\text{ ms}$ units): $50 \times 10 = 500\text{ ms}$. In `s06.dat`, stored value is 100 ($1000\text{ ms} = 1.0\text{ s}$). In `s07.dat`, stored value is 25 ($250\text{ ms} = 0.25\text{ s}$).
+
+**Result:** REJECTED for direct milliseconds; CONFIRMED as centiseconds (multiply by 10 to obtain milliseconds).
+
+### 2026-10-16 15:44 — [LABLOG] Header checksum algorithm
+
+**Hypothesis:** Bytes 30-31 store a 16-bit CRC or sum over the header.
+
+**Tried:** Tested sum16, CRC-16-IBM, and CRC-16-CCITT across bytes 0-29 of s05, s06, and s07.
+
+**Evidence:** CRC-16-CCITT (polynomial `0x1021`, initial value `0xFFFF`, little-endian) over bytes 0x00–0x1D (30 bytes) matches the stored u16le at 0x1E–0x1F in all three samples: `0xef52` in s05, `0x0268` in s06, and `0x193a` in s07.
+
+**Result:** CONFIRMED as CRC-16-CCITT (poly 0x1021, init 0xFFFF) over bytes 0..29.
+
+### 2026-10-16 15:45 — [LABLOG] Block framing and block types
+
+**Hypothesis:** Blocks follow the header back to back, prefixed with sync marker `0xB1`.
+
+**Tried:** Parsed file streams looking for sync marker `0xB1` and length fields.
+
+**Evidence:** Every block begins with sync byte `0xB1`, followed by 1-byte block type, 2-byte u16le payload length $L$, $L$ payload bytes, and a 2-byte u16le trailer CRC. Total block length is $4 + L + 2$ bytes. In `s05.dat`, 7 blocks exactly span offsets 0x0020 to 0x00E5 (229 bytes, EOF). In `s06.dat`, 8 blocks span 0x0020 to 0x0139 (313 bytes, EOF). In `s07.dat`, 8 blocks span 0x0020 to 0x014E (334 bytes, EOF). Three block types were observed: Type 3 (channel configuration), Type 1 (data records), and Type 2 (events).
+
+**Result:** CONFIRMED
+
+### 2026-10-16 15:45 — [LABLOG] Block trailer checksum algorithm and coverage
+
+**Hypothesis:** The 2-byte block trailer is a CRC-16-CCITT over the block payload only.
+
+**Tried:** Tested CRC-16-CCITT over payload only vs full block vs block without sync marker.
+
+**Evidence:** CRC-16-CCITT (poly `0x1021`, init `0xFFFF`) over `type + length + payload` (excluding marker `0xB1`) matched the stored 2-byte trailer across all 7 blocks in `s05.dat`, all 8 blocks in `s06.dat`, and 7 of 8 blocks in `s07.dat`. Calculating over payload only failed to match.
+
+**Result:** CONFIRMED as CRC-16-CCITT over `block[1 : 4 + payload_len]`.
+
+### 2026-10-16 15:46 — [LABLOG] Channel configuration block (Type 3)
+
+**Hypothesis:** Type 3 blocks describe sensor channels with calibration parameters.
+
+**Tried:** Unpacked payload of Block 1 in s05, s06, and s07 as arrays of 12-byte structs.
+
+**Evidence:** Block 1 payload length is $12 \times \text{num\_channels}$ (24 bytes in s05, 36 bytes in s06/s07). Each 12-byte entry consists of: 4-byte ASCII null-padded unit string (e.g. `mV`, `ppm`, `pH`, `kPa`, `degC`), 4-byte float32le scale factor, and 4-byte float32le offset. In `s05.dat`: ch0 has unit `mV`, scale 0.5, offset 100.0; ch1 has unit `ppm`, scale 0.5, offset 20.5.
+
+**Result:** CONFIRMED
+
+### 2026-10-16 15:46 — [LABLOG] Linear calibration formula and data record decoding (Type 1)
+
+**Hypothesis:** Type 1 blocks contain raw ADC integer measurements that map linearly to calibrated floats.
+
+**Tried:** Unpacked Type 1 payloads across all samples and applied calibration formula $\text{calibrated} = \text{raw} \times \text{scale} + \text{offset}$.
+
+**Evidence:** Type 1 payload begins with 2-byte u16le starting sample index and 1-byte u8 sample count $N$. Then $N$ sample records follow, each containing $\text{num\_channels} \times 2$ bytes of int16le raw values. In `s05.dat`, applying the formula to all 22 samples produced floating-point values identical to `kit/expected_outputs/s05.dat.json` (e.g. sample 0: $177 \times 0.5 + 100.0 = 188.5\text{ mV}$, $1160 \times 0.5 + 20.5 = 600.5\text{ ppm}$).
+
+**Result:** CONFIRMED
+
+### 2026-10-16 15:47 — [LABLOG] Event block structure (Type 2)
+
+**Hypothesis:** Type 2 blocks record timestamped log events and operator annotations.
+
+**Tried:** Parsed Type 2 blocks in s05, s06, and s07.
+
+**Evidence:** Type 2 payload layout is: 2-byte u16le sample index, 1-byte u8 severity level, 1-byte u8 message length $M$, followed by $M$ ASCII message bytes. In `s05.dat`, Block 4 gave `sample: 9, severity: 2, message: 'Sensor drift'` and Block 7 gave `sample: 21, severity: 1, message: 'Run started'`, matching `s05.dat.json` exactly.
+
+**Result:** CONFIRMED
+
+### 2026-10-16 15:47 — [LABLOG] Dropout sentinel value in raw data
+
+**Hypothesis:** Sensor dropouts or disconnected channels are represented by a dedicated int16 sentinel.
+
+**Tried:** Scanned raw int16 readings for boundary values across all data blocks.
+
+**Evidence:** In `s06.dat`, samples 0, 6, 11, 12, 19, and 23 contain raw value `-32768` (`0x8000`). According to `kit/OUTPUT-CONTRACT.md`, dropouts are reported as `null`. `-32768` represents the minimum signed 16-bit integer and serves as the dropout indicator.
+
+**Result:** CONFIRMED as `-32768` (`0x8000`).
+
+### 2026-10-16 15:48 — [LABLOG] Corruption and damage in s07.dat
+
+**Hypothesis:** Block 5 in `s07.dat` fails its CRC check due to localized bit corruption.
+
+**Tried:** Evaluated stored vs calculated CRC in `s07.dat` Block 5 and tested single-byte mutations.
+
+**Evidence:** Stored CRC is `0x97b2`, while calculated CRC is `0xc4cb`. A single-byte mutation test over the 42-byte block slice revealed that changing byte offset 0x00B2 from `0xF0` to `0xE0` (a single bit flip, bit 4) produces exactly the stored CRC `0x97b2`. This confirms `s07.dat` has an intentional single-bit corruption in sample 9 of Block 5, which must be reported with `DamageKind.CRC_MISMATCH` and `status: "unverified"` on affected records.
+
+**Result:** CONFIRMED
