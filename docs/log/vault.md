@@ -291,3 +291,106 @@ Evaluated on `s09.dat` Rec 0 (`edge.bin`, 27 stored bytes, declared `decoded_sz 
 - Case 3: An unconstrained loop extending `[prev] * (cnt - 1)` could allocate gigabytes if chained. Bounding expansion against `min(decoded_sz, MAX_DECOMPRESSED)` prevents memory exhaustion.
 
 **Result:** CONFIRMED. Production decoder implementation must enforce: buffer bounds checking on escape reads, non-empty history validation for positive counts, and strict output length clamping.
+
+### 2026-10-16 16:35 — Payload chunk framing and stored-size interpretation
+
+**Hypothesis:** In the payload region (file offset 16 to `string_table_offset`), every chunk begins with a 4-byte header (`42 4C` + u16le ID), contains `stored_sz - 4` stored payload bytes, and is followed by a 4-byte little-endian CRC-32 trailer at offset `data_offset + stored_sz`, making each chunk's total file span `stored_sz + 4` bytes.
+
+**Tried:** Measured boundaries across all 9 records in `s08.dat`, `s09.dat`, and `s10.dat`. Verified that `data_offset[i+1] == data_offset[i] + stored_sz[i] + 4`, that `data_offset[0] == 16`, and that `data_offset[N-1] + stored_sz[N-1] + 4 == string_table_offset`.
+
+**Evidence:**
+- Sample `s08.dat` (`string_table_offset = 229`):
+  - Chunk 0: `data_off = 16`, `stored_sz = 153` (4 hdr + 149 data), trailer at 169..173. Span = 157 B. Next offset = 173.
+  - Chunk 1: `data_off = 173`, `stored_sz = 24` (4 hdr + 20 data), trailer at 197..201. Span = 28 B. Next offset = 201.
+  - Chunk 2: `data_off = 201`, `stored_sz = 24` (4 hdr + 20 data), trailer at 225..229. Span = 28 B. Next offset = 229 (`string_table_offset`).
+- Sample `s09.dat` (`string_table_offset = 151`):
+  - Chunk 0: `data_off = 16`, `stored_sz = 31` (4 hdr + 27 data), trailer at 47..51. Next = 51.
+  - Chunk 1: `data_off = 51`, `stored_sz = 57` (4 hdr + 53 data), trailer at 108..112. Next = 112.
+  - Chunk 2: `data_off = 112`, `stored_sz = 35` (4 hdr + 31 data), trailer at 147..151. Next = 151 (`string_table_offset`).
+- Sample `s10.dat` (`string_table_offset = 242`):
+  - Chunk 0: `data_off = 16`, `stored_sz = 151` (4 hdr + 147 data), trailer at 167..171. Next = 171.
+  - Chunk 1: `data_off = 171`, `stored_sz = 28` (4 hdr + 24 data), trailer at 199..203. Next = 203.
+  - Chunk 2: `data_off = 203`, `stored_sz = 35` (4 hdr + 31 data), trailer at 238..242. Next = 242 (`string_table_offset`).
+- Distinct size definitions established:
+  - `stored_sz`: 4 (chunk header) + stored payload bytes. Excludes CRC trailer.
+  - Stored payload length: `stored_sz - 4`.
+  - Chunk on-disk span: `stored_sz + 4`.
+  - `decoded_sz`: size of payload after de-obfuscation and decompression.
+
+**Result:** CONFIRMED. The payload chunk structure strictly spans `stored_sz + 4` bytes and tiles the payload region without gaps.
+
+### 2026-10-16 16:40 — CRC-32 checksum coverage and endianness verification
+
+**Hypothesis:** The 4-byte chunk trailer is a little-endian unsigned 32-bit integer representing the CRC-32 (IEEE 802.3, polynomial `0xEDB88320`) calculated strictly over the fully decoded payload.
+
+**Tried:** Computed `zlib.crc32()` over:
+1. Candidate decoded payload alone.
+2. Raw stored payload alone.
+3. 4-byte chunk header + stored payload.
+4. Entire chunk including trailer.
+Compared results against `u32le(data[data_offset + stored_sz : data_offset + stored_sz + 4])`.
+
+**Evidence:**
+Full record-level CRC-32 validation table across all three samples:
+
+| Sample | ID | Filename | Type | Flags | Decoded Size | Stored CRC-32 | Computed Decoded CRC-32 | Result |
+|---|---|---|---|---|---|---|---|---|
+| `s08.dat` | 30574 | `report.txt` | 1 (text) | 0x03 | 149 | `0x1D8949DA` | `0x1D8949DA` | MATCH (100%) |
+| `s08.dat` | 30577 | `notes.txt` | 1 (text) | 0x02 | 20 | `0x0AC1B211` | `0x0AC1B211` | MATCH (100%) |
+| `s08.dat` | 30580 | `logo.bin` | 3 (binary) | 0x00 | 20 | `0x8A303553` | `0x8A303553` | MATCH (100%) |
+| `s09.dat` | 37327 | `edge.bin` | 3 (binary) | 0x01 | 822 | `0xD5EAD680` | `0xD5EAD680` | MATCH (100%) |
+| `s09.dat` | 37330 | `icon.bmp8` | 2 (bitmap) | 0x01 | 130 | `0x6EFB0868` | `0x6EFB0868` | MATCH (100%) |
+| `s09.dat` | 37333 | `unicode.txt` | 1 (text) | 0x02 | 31 | `0x3E998E58` | `0x3E998E58` | MATCH (100%) |
+| `s10.dat` | 6146 | `report.txt` | 1 (text) | 0x03 | 147 | `0xF3606645` | `0xF3606645` | MATCH (100%) |
+| `s10.dat` | 6149 | `sensor.bin` | 3 (binary) | 0x00 | 24 | `0xF55026E8` | `0x5CA76CA9` | MISMATCH (intentional damage) |
+| `s10.dat` | 6152 | `icon.bmp8` | 2 (bitmap) | 0x01 | 66 | `0xB507A8D4` | `0xB507A8D4` | MATCH (100%) |
+
+For bitmap records (`s09.dat` 37330 and `s10.dat` 6152), CRC-32 covers all `decoded_sz` bytes (the 2-byte width/height header plus pixel data). Models 2, 3, and 4 failed for all records.
+
+**Result:** CONFIRMED. Checksums are standard little-endian CRC-32/IEEE computed strictly over the complete decoded payload.
+
+### 2026-10-16 16:45 — SHA-256 contract alignment with reference output
+
+**Hypothesis:** The `sha256` field in contract record output is computed over the fully decoded payload (post XOR de-obfuscation and post RLE decompression), not the stored or partially transformed payload.
+
+**Tried:** Tested `hashlib.sha256()` on raw stored bytes, XOR-transformed bytes, and fully decoded bytes against reference values in `kit/expected_outputs/s08.dat.json`.
+
+**Evidence:**
+- `s08.dat` Record 0 (`report.txt`, id 30574, flags=0x03):
+  - Raw stored payload hash: `2f960ce8dba6493e36279a6f34e233b988367e305a335e8721a73194fc6db8af` (no match)
+  - Decoded payload hash: `cc395ca4c42f1f1110b99a0dfb6f23725fa86190685bdecff362c51abf1fced9`
+  - Reference JSON: `cc395ca4c42f1f1110b99a0dfb6f23725fa86190685bdecff362c51abf1fced9` (EXACT MATCH)
+- `s08.dat` Record 1 (`notes.txt`, id 30577, flags=0x02):
+  - Raw stored payload hash: `e5350d9110ad1c61d6b00e1f1ad9357f7ee53a699c6a6e250556fd24762ddd5c` (no match)
+  - Decoded payload hash: `f952b067f384c06988d09477ba06cf21834d031d66ae196a64be9a9a0b742b0a`
+  - Reference JSON: `f952b067f384c06988d09477ba06cf21834d031d66ae196a64be9a9a0b742b0a` (EXACT MATCH)
+- `s08.dat` Record 2 (`logo.bin`, id 30580, flags=0x00):
+  - Decoded payload hash: `98afdedaf84aeb6ac455d27f31de2ed07f24da3e9bba43788164068bcd91dfa2`
+  - Reference JSON: `98afdedaf84aeb6ac455d27f31de2ed07f24da3e9bba43788164068bcd91dfa2` (EXACT MATCH)
+- Observational hashes for unreferenced samples (not from external reference files):
+  - `s09.dat` Rec 0 (`edge.bin`): `66284359b5755f34ad6822d083ac0795dc04f14cee3c76b3bf6426ab80ef2ec2`
+  - `s09.dat` Rec 1 (`icon.bmp8`): `f3a7833e0bf72cfb186af92f0b7c8580a755695bca8156cb7362524c32373558`
+  - `s09.dat` Rec 2 (`unicode.txt`): `54ba8d1bc872a1b2961868beecb3bac8dfa1cc2ef9600772958657cd6dea8f57`
+  - `s10.dat` Rec 0 (`report.txt`): `daabc51ca47b04275a034365a6b7be7a49de9f7c1a15c713002c0a79bf90bc90`
+  - `s10.dat` Rec 1 (`sensor.bin`): `73969dd421999c45606672d2f2a76abc3b45d7db83374934d406f604977ac88b`
+  - `s10.dat` Rec 2 (`icon.bmp8`): `dc520f59b716d28514765cfaf09f73c7c200b29d1144e02c514729b82e67b7da`
+
+**Result:** CONFIRMED. Contract `sha256` is strictly calculated over the fully decoded payload.
+
+### 2026-10-16 16:50 — Detailed s10 record 1 corruption investigation
+
+**Hypothesis:** `s10.dat` Record 1 (`sensor.bin`) checksum failure is due to isolated archive payload corruption rather than parsing misalignment or an alternative algorithm.
+
+**Tried:**
+1. Inspected chunk markers and bounds: offset 171 has marker `42 4C`, ID 6149; trailer at 199 has `0xF55026E8`; offset 203 begins chunk 2 with marker `42 4C` and ID 6152. All offsets tile with zero overlap or gap.
+2. Index entry declares `flags = 0x00`, `stored_sz = 28` (24 bytes payload), `decoded_sz = 24`.
+3. Tested algorithmic variants on the 24 payload bytes: rolling XOR with key 248, fixed XOR with key 248, big-endian CRC-32, header-included CRC-32, and all candidate hash/checksum presets via `find_checksum()`.
+
+**Evidence:**
+- Framing, index metadata, and string table references are completely intact and structurally indistinguishable from healthy records.
+- `find_checksum` returned zero hits for `0xF55026E8` across all checksum/CRC variants on both raw payload and header+payload slices.
+- All other records in `s10.dat` (Record 0 and Record 2) achieve 100% CRC-32 match.
+- This establishes that the mismatch is isolated to the 24 stored payload bytes in `[175, 199)`.
+- Under the Salvage output contract, a record with an unverified payload CRC must be extracted, assigned `"verified": false`, `"issues": ["crc_mismatch"]`, and paired with a `Damage(175, 199, DamageKind.CRC_MISMATCH, ...)` entry.
+
+**Result:** CONFIRMED. The failure in `s10.dat` Record 1 is authentic test archive corruption (`crc_mismatch`), not an unresolved algorithm or decoder defect.
