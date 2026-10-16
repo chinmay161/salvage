@@ -54,7 +54,7 @@ The format supports both unblocked variable-length records (RECFM=V) and blocked
 
 ## 2. Hypotheses tried, confirmed and rejected
 
-**Total hypotheses tested:** 10 (8 CONFIRMED, 1 REJECTED, 1 INCONCLUSIVE).
+**Total hypotheses tested:** 11 (8 CONFIRMED, 2 REJECTED, 1 INCONCLUSIVE).
 
 ### The 3 hypotheses that mattered most:
 
@@ -70,8 +70,9 @@ The format supports both unblocked variable-length records (RECFM=V) and blocked
 
 ### Additional tested hypotheses:
 4. **Text encoding (cp037 vs cp500 vs cp1047):** Tested cp037, cp500, and cp1047. cp1047 is not supported in the Python standard library. Across all 256 byte values, only 7 code points differ between cp037 and cp500 (0x4a, 0x4f, 0x5a, 0x5f, 0xb0, 0xba, 0xbb); none of these 7 bytes occur in any text field across the three samples. All actual text bytes (0x40, 0x6b, 0x7d, 0xc1..0xc9, 0xd1..0xd9, 0xe2..0xe9, 0xf0..0xf9) decode identically in both cp037 and cp500 (INCONCLUSIVE: cp037 chosen; cp500 decodes identically).
-5. **Credits field as packed decimal vs u16be:** Parsing `credits` as packed decimal fails (e.g. `00 28` has invalid sign 8; `00 4a` has non-decimal nibble 0x0A). Parsing as u16 big-endian yields 40, 74, 82, 84, 122 summing to 402, matching `trailer_credits_total` (402) in s20 and 546 in s21 (REJECTED for packed decimal, CONFIRMED for u16be).
-6. **Damaged-header recognition via detail record chain:** A file whose header is corrupted is recognized by probe (score 0.75) if followed by a chain of at least 2 valid detail records (RDW length 48, flags 00 00, type 'D', 6 EBCDIC digits) at offset 0, 33, 4, or 37. Foreign samples in kit/samples/ all score 0.0 (CONFIRMED).
+5. **Credits field as COMP-3 packed decimal:** Parsing `credits` at payload +35 as packed decimal fails (e.g. `00 28` has invalid sign 8; `00 4a` has non-decimal nibble 0x0A) (REJECTED).
+6. **Credits field as u16 big-endian binary integer:** Parsing `credits` at payload +35 as u16 big-endian yields 40, 74, 82, 84, 122 summing to 402, matching `trailer_credits_total` (402) in s20 and 546 in s21 (CONFIRMED).
+7. **Damaged-header recognition via detail record chain:** A file whose header is corrupted is recognized by probe (score 0.75) if followed by a chain of at least 2 valid detail records (RDW length 48, flags 00 00, type 'D', 6 EBCDIC digits) at offset 0, 33, 4, or 37. Foreign samples in kit/samples/ all score 0.0 (CONFIRMED).
 
 ---
 

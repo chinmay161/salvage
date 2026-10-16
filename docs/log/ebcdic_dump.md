@@ -40,15 +40,25 @@
 
 **Result:** CONFIRMED. s21.000 is blocked (RECFM=VB) with BDWs, while s20.000 is unblocked (RECFM=V).
 
-### 2026-10-16 15:35 — Credits field is COMP-3 packed decimal vs u16 big-endian binary
+### 2026-10-16 15:35 — Credits field is COMP-3 packed decimal
 
 **Hypothesis:** The 2-byte credits field at payload offset +35 in student detail records is encoded as COMP-3 packed decimal (3 digits + sign).
 
-**Tried:** Tested parsing the 2-byte sequence across records in s20.000 (record 1: `00 28`, record 2: `00 4a`, record 3: `00 52`, record 4: `00 54`, record 5: `00 7a`) as COMP-3 packed decimal versus unsigned 16-bit big-endian binary integer.
+**Tried:** Tested parsing the 2-byte sequence across records in s20.000 (record 1: `00 28`, record 2: `00 4a`, record 3: `00 52`, record 4: `00 54`, record 5: `00 7a`) as COMP-3 packed decimal.
 
-**Evidence:** As packed decimal, `00 28` ends in low nibble 8 which is not a valid sign nibble (valid signs are 0x0C, 0x0D, 0x0F, etc.), and `00 4a` contains high nibble 0x0A which is not a valid decimal digit (0..9). Read as u16 big-endian integers, the bytes yield exactly: 0x0028 = 40, 0x004a = 74, 0x0052 = 82, 0x0054 = 84, and 0x007a = 122. These match kit/expected_outputs/s20.000.json exactly, and their sum (40 + 74 + 82 + 84 + 122 = 402) equals `trailer_credits_total` (402). Similarly, in s21.000, u16be values (154, 71, 115, 106, 100) sum to 546, matching trailer credits 546.
+**Evidence:** In packed decimal, the low nibble of the second byte must be a valid sign nibble (0x0C, 0x0D, 0x0F, etc.); in `00 28`, the low nibble is 8, which is an invalid sign. In `00 4a`, high nibble 0x0A is not a valid decimal digit (0..9).
 
-**Result:** REJECTED for packed decimal; CONFIRMED for u16 big-endian binary.
+**Result:** REJECTED. The field cannot be parsed as COMP-3 packed decimal.
+
+### 2026-10-16 15:35 — Credits field is u16 big-endian binary integer
+
+**Hypothesis:** The 2-byte credits field at payload offset +35 in student detail records is an unsigned 16-bit big-endian binary integer.
+
+**Tried:** Read the 2-byte sequence across records in s20.000 (record 1: `00 28`, record 2: `00 4a`, record 3: `00 52`, record 4: `00 54`, record 5: `00 7a`) as u16 big-endian integers.
+
+**Evidence:** The bytes yield exactly: 0x0028 = 40, 0x004a = 74, 0x0052 = 82, 0x0054 = 84, and 0x007a = 122. These match kit/expected_outputs/s20.000.json exactly, and their sum (40 + 74 + 82 + 84 + 122 = 402) equals `trailer_credits_total` (402). In s21.000, u16be values (154, 71, 115, 106, 100) sum to 546, matching trailer credits 546.
+
+**Result:** CONFIRMED. Credits are stored as u16 big-endian binary integers.
 
 ### 2026-10-16 15:36 — Header record structure (type 'H')
 
