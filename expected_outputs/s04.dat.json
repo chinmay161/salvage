@@ -1,0 +1,96 @@
+{
+ "status": "partial",
+ "metadata": {
+  "version": 2,
+  "encoding": "cp437",
+  "created": "1998-04-03T15:18:36",
+  "branch_id": 1991,
+  "declared_record_count": 8,
+  "data_offset": 16
+ },
+ "records": [
+  {
+   "id": 1000,
+   "title": "Siddhartha",
+   "author": "Hermann Hesse",
+   "year": 1922,
+   "price_cents": 1250,
+   "copies": 1,
+   "isbn": "8553201082",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  },
+  {
+   "id": 1008,
+   "title": "Frankenstein",
+   "author": "Mary Shelley",
+   "year": 1818,
+   "price_cents": 699,
+   "copies": 2,
+   "isbn": "9580247951",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  },
+  {
+   "id": 1019,
+   "title": "Ulysses",
+   "author": "James Joyce",
+   "year": 1922,
+   "price_cents": 1250,
+   "copies": 3,
+   "isbn": "8172457839",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  },
+  {
+   "id": 1023,
+   "title": "Emma",
+   "author": "Jane Austen",
+   "year": 1815,
+   "price_cents": 1599,
+   "copies": 4,
+   "isbn": "370056841X",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  },
+  {
+   "id": 1033,
+   "title": "Dracula",
+   "author": "Bram Stoker",
+   "year": 1897,
+   "price_cents": 850,
+   "copies": 3,
+   "isbn": "4357845513",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  }
+ ],
+ "expected_damage": [
+  {
+   "any_of": [
+    "truncated"
+   ],
+   "lossy": true
+  }
+ ],
+ "match_on": [
+  "id"
+ ],
+ "optional_partial_records": [
+  {
+   "id": 1040
+  }
+ ],
+ "format": "LIBRA-98",
+ "file": "s04.dat"
+}

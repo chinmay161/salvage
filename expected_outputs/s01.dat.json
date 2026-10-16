@@ -1,0 +1,84 @@
+{
+ "status": "ok",
+ "metadata": {
+  "version": 2,
+  "encoding": "cp437",
+  "created": "1998-10-03T11:20:22",
+  "branch_id": 576,
+  "declared_record_count": 5,
+  "data_offset": 16
+ },
+ "records": [
+  {
+   "id": 1002,
+   "title": "Dracula",
+   "author": "Bram Stoker",
+   "year": 1897,
+   "price_cents": 499,
+   "copies": 3,
+   "isbn": "4010278714",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  },
+  {
+   "id": 1009,
+   "title": "Crime and Punishment",
+   "author": "Fyodor Dostoevsky",
+   "year": 1866,
+   "price_cents": 1599,
+   "copies": 4,
+   "isbn": "0127391606",
+   "checked_out": true,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": "1998-12-19"
+  },
+  {
+   "id": 1017,
+   "title": "The Great Gatsby",
+   "author": "F. Scott Fitzgerald",
+   "year": 1925,
+   "price_cents": 499,
+   "copies": 2,
+   "isbn": "075268552X",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  },
+  {
+   "id": 1021,
+   "title": "Frankenstein",
+   "author": "Mary Shelley",
+   "year": 1818,
+   "price_cents": 850,
+   "copies": 4,
+   "isbn": "0034530703",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  },
+  {
+   "id": 1028,
+   "title": "Ulysses",
+   "author": "James Joyce",
+   "year": 1922,
+   "price_cents": 699,
+   "copies": 4,
+   "isbn": "2464704784",
+   "checked_out": false,
+   "deleted": false,
+   "reference_only": false,
+   "due_date": null
+  }
+ ],
+ "expected_damage": [],
+ "match_on": [
+  "id"
+ ],
+ "format": "LIBRA-98",
+ "file": "s01.dat"
+}

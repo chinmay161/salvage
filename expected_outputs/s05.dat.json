@@ -1,0 +1,216 @@
+{
+ "status": "ok",
+ "metadata": {
+  "version": 1,
+  "instrument": "THERMO LOGGER",
+  "sample_interval_ms": 500,
+  "channels": [
+   {
+    "index": 0,
+    "unit": "mV"
+   },
+   {
+    "index": 1,
+    "unit": "ppm"
+   }
+  ],
+  "start_time_utc": "1992-10-11T05:07:43Z",
+  "declared_block_count": 7,
+  "events": [
+   {
+    "sample": 9,
+    "severity": 2,
+    "message": "Sensor drift"
+   },
+   {
+    "sample": 21,
+    "severity": 1,
+    "message": "Run started"
+   }
+  ]
+ },
+ "records": [
+  {
+   "sample": 0,
+   "time_ms": 0,
+   "values": [
+    188.5,
+    600.5
+   ]
+  },
+  {
+   "sample": 1,
+   "time_ms": 500,
+   "values": [
+    265.0,
+    596.0
+   ]
+  },
+  {
+   "sample": 2,
+   "time_ms": 1000,
+   "values": [
+    260.0,
+    594.5
+   ]
+  },
+  {
+   "sample": 3,
+   "time_ms": 1500,
+   "values": [
+    250.5,
+    593.5
+   ]
+  },
+  {
+   "sample": 4,
+   "time_ms": 2000,
+   "values": [
+    248.5,
+    596.0
+   ]
+  },
+  {
+   "sample": 5,
+   "time_ms": 2500,
+   "values": [
+    250.0,
+    594.0
+   ]
+  },
+  {
+   "sample": 6,
+   "time_ms": 3000,
+   "values": [
+    246.5,
+    597.0
+   ]
+  },
+  {
+   "sample": 7,
+   "time_ms": 3500,
+   "values": [
+    255.0,
+    592.5
+   ]
+  },
+  {
+   "sample": 8,
+   "time_ms": 4000,
+   "values": [
+    257.5,
+    595.0
+   ]
+  },
+  {
+   "sample": 9,
+   "time_ms": 4500,
+   "values": [
+    266.5,
+    590.0
+   ]
+  },
+  {
+   "sample": 10,
+   "time_ms": 5000,
+   "values": [
+    262.0,
+    590.5
+   ]
+  },
+  {
+   "sample": 11,
+   "time_ms": 5500,
+   "values": [
+    264.5,
+    599.0
+   ]
+  },
+  {
+   "sample": 12,
+   "time_ms": 6000,
+   "values": [
+    265.5,
+    609.5
+   ]
+  },
+  {
+   "sample": 13,
+   "time_ms": 6500,
+   "values": [
+    273.5,
+    609.0
+   ]
+  },
+  {
+   "sample": 14,
+   "time_ms": 7000,
+   "values": [
+    263.0,
+    600.5
+   ]
+  },
+  {
+   "sample": 15,
+   "time_ms": 7500,
+   "values": [
+    269.5,
+    597.5
+   ]
+  },
+  {
+   "sample": 16,
+   "time_ms": 8000,
+   "values": [
+    267.5,
+    585.5
+   ]
+  },
+  {
+   "sample": 17,
+   "time_ms": 8500,
+   "values": [
+    270.0,
+    581.5
+   ]
+  },
+  {
+   "sample": 18,
+   "time_ms": 9000,
+   "values": [
+    264.0,
+    587.5
+   ]
+  },
+  {
+   "sample": 19,
+   "time_ms": 9500,
+   "values": [
+    261.0,
+    594.5
+   ]
+  },
+  {
+   "sample": 20,
+   "time_ms": 10000,
+   "values": [
+    269.0,
+    591.5
+   ]
+  },
+  {
+   "sample": 21,
+   "time_ms": 10500,
+   "values": [
+    260.0,
+    -10091.5
+   ]
+  }
+ ],
+ "expected_damage": [],
+ "match_on": [
+  "sample"
+ ],
+ "format": "LABLOG",
+ "file": "s05.dat"
+}

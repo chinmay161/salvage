@@ -1,0 +1,170 @@
+{
+ "status": "ok",
+ "metadata": {
+  "version_code": "0x0404",
+  "declared_range": "A1:D5",
+  "column_widths": {
+   "A": 14
+  }
+ },
+ "records": [
+  {
+   "cell": "A1",
+   "col": 0,
+   "row": 0,
+   "type": "label",
+   "value": "Item",
+   "alignment": "left"
+  },
+  {
+   "cell": "B1",
+   "col": 1,
+   "row": 0,
+   "type": "label",
+   "value": "Qty",
+   "alignment": "left"
+  },
+  {
+   "cell": "C1",
+   "col": 2,
+   "row": 0,
+   "type": "label",
+   "value": "Price",
+   "alignment": "left"
+  },
+  {
+   "cell": "D1",
+   "col": 3,
+   "row": 0,
+   "type": "label",
+   "value": "Total",
+   "alignment": "left"
+  },
+  {
+   "cell": "A2",
+   "col": 0,
+   "row": 1,
+   "type": "label",
+   "value": "Bolts",
+   "alignment": "left"
+  },
+  {
+   "cell": "B2",
+   "col": 1,
+   "row": 1,
+   "type": "integer",
+   "value": 47
+  },
+  {
+   "cell": "C2",
+   "col": 2,
+   "row": 1,
+   "type": "number",
+   "value": 19.99
+  },
+  {
+   "cell": "D2",
+   "col": 3,
+   "row": 1,
+   "type": "formula",
+   "cached_value": 939.53,
+   "formula_raw_hex": "010100010001020001000b03"
+  },
+  {
+   "cell": "A3",
+   "col": 0,
+   "row": 2,
+   "type": "label",
+   "value": "Washers",
+   "alignment": "left"
+  },
+  {
+   "cell": "B3",
+   "col": 1,
+   "row": 2,
+   "type": "integer",
+   "value": 32
+  },
+  {
+   "cell": "C3",
+   "col": 2,
+   "row": 2,
+   "type": "number",
+   "value": 19.99
+  },
+  {
+   "cell": "D3",
+   "col": 3,
+   "row": 2,
+   "type": "formula",
+   "cached_value": 639.68,
+   "formula_raw_hex": "010100020001020002000b03"
+  },
+  {
+   "cell": "A4",
+   "col": 0,
+   "row": 3,
+   "type": "label",
+   "value": "Springs",
+   "alignment": "left"
+  },
+  {
+   "cell": "B4",
+   "col": 1,
+   "row": 3,
+   "type": "integer",
+   "value": 46
+  },
+  {
+   "cell": "C4",
+   "col": 2,
+   "row": 3,
+   "type": "number",
+   "value": 0.05
+  },
+  {
+   "cell": "D4",
+   "col": 3,
+   "row": 3,
+   "type": "formula",
+   "cached_value": 2.3000000000000003,
+   "formula_raw_hex": "010100030001020003000b03"
+  },
+  {
+   "cell": "A5",
+   "col": 0,
+   "row": 4,
+   "type": "label",
+   "value": "Brackets",
+   "alignment": "left"
+  },
+  {
+   "cell": "B5",
+   "col": 1,
+   "row": 4,
+   "type": "integer",
+   "value": 189
+  },
+  {
+   "cell": "C5",
+   "col": 2,
+   "row": 4,
+   "type": "number",
+   "value": 19.99
+  },
+  {
+   "cell": "D5",
+   "col": 3,
+   "row": 4,
+   "type": "formula",
+   "cached_value": 3778.1099999999997,
+   "formula_raw_hex": "010100040001020004000b03"
+  }
+ ],
+ "expected_damage": [],
+ "match_on": [
+  "cell"
+ ],
+ "format": "WKS",
+ "file": "s11.wks"
+}

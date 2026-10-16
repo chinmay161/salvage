@@ -1,0 +1,42 @@
+{
+ "status": "ok",
+ "metadata": {
+  "entry_count": 3,
+  "xor_key": 32,
+  "flags": 0
+ },
+ "records": [
+  {
+   "id": 30574,
+   "name": "report.txt",
+   "type": "text",
+   "size": 149,
+   "sha256": "cc395ca4c42f1f1110b99a0dfb6f23725fa86190685bdecff362c51abf1fced9",
+   "compressed": true,
+   "text": "Grade report - Term 3\n----------------------------------------\nMath      A\nPhysics   B+\nHistory   A-\n                              Signed: M. Dsouza\n"
+  },
+  {
+   "id": 30577,
+   "name": "notes.txt",
+   "type": "text",
+   "size": 20,
+   "sha256": "f952b067f384c06988d09477ba06cf21834d031d66ae196a64be9a9a0b742b0a",
+   "compressed": false,
+   "text": "Remember: buy chalk."
+  },
+  {
+   "id": 30580,
+   "name": "logo.bin",
+   "type": "binary",
+   "size": 20,
+   "sha256": "98afdedaf84aeb6ac455d27f31de2ed07f24da3e9bba43788164068bcd91dfa2",
+   "compressed": false
+  }
+ ],
+ "expected_damage": [],
+ "match_on": [
+  "id"
+ ],
+ "format": "VAULT",
+ "file": "s08.dat"
+}
