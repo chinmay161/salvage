@@ -239,3 +239,55 @@ The complete record-level XOR validation matrix:
 | 6152 | `icon.bmp8` | 2 (bitmap) | 0x01 | No (bit 1=0) | [207, 238) (31 B) | No XOR (RLE compressed) | CONFIRMED (RLE produces 66 B, matches CRC 0xB507A8D4) | None |
 
 **Result:** CONFIRMED. Bit 1 of index entry `flags` strictly determines XOR obfuscation. When bit 1 is 0, stored bytes are not XORed; when bit 1 is 1, rolling XOR de-obfuscation with `(xor_key + j) & 0xFF` is required.
+
+### 2026-10-16 16:20 — ARC RLE escape semantics and count interpretation
+
+**Hypothesis:** In ARC-style RLE compression (escape byte `0x90`), an escape sequence `0x90 0x00` encodes a literal `0x90` without needing a preceding byte, whereas `0x90 <cnt>` with `cnt > 0` repeats the immediately preceding emitted byte `cnt - 1` additional times (total `cnt` copies in output).
+
+**Tried:** Tested candidate decompressors across all compressed records in the corpus:
+- Model A: `cnt - 1` additional copies (total output count = `cnt`).
+- Model B: `cnt` additional copies (total output count = `cnt + 1`).
+Evaluated on `s09.dat` Rec 0 (`edge.bin`, 27 stored bytes, declared `decoded_sz = 822`), `s09.dat` Rec 1 (`icon.bmp8`, 53 stored bytes, declared `decoded_sz = 130`), and `s10.dat` Rec 2 (`icon.bmp8`, 31 stored bytes, declared `decoded_sz = 66`).
+
+**Evidence:**
+- In `s09.dat` Rec 0 (`edge.bin`), byte 0 is `0x90 0x00`. No preceding byte exists. Under Model A and B, `0x90 0x00` emits literal `0x90`.
+- For repeat sequences (e.g., `42 90 04`, `00 90 ff`, `43 90 ff`, `44 90 ff`, `44 90 2d`):
+  - Model A (`cnt - 1` additional copies): produces exactly 822 bytes. CRC-32 is `0xD5EAD680`, exactly matching stored trailer `0xD5EAD680`.
+  - Model B (`cnt` additional copies): produces 827 bytes (+5 bytes across 5 repeat sequences). CRC-32 is `0xF62F0AD8`, failing trailer verification.
+- In `s09.dat` Rec 1 (`icon.bmp8`): Model A produces 130 bytes; CRC-32 `0x6EFB0868` matches trailer `0x6EFB0868` (100% match).
+- In `s10.dat` Rec 2 (`icon.bmp8`): Model A produces 66 bytes; CRC-32 `0xB507A8D4` matches trailer `0xB507A8D4` (100% match).
+- In `s08.dat` Rec 0 (`report.txt`) and `s10.dat` Rec 0 (`report.txt`), `compressed` bit 0 is set, but payload contains no `0x90` escapes; Model A emits the 149 and 147 bytes literally, matching decoded lengths and CRCs `0x1D8949DA` and `0xF3606645`.
+
+**Result:** CONFIRMED. `0x90 0x00` emits literal `0x90`. For `cnt > 0`, `0x90 <cnt>` repeats the previous byte `cnt - 1` times (yielding `cnt` total copies of that byte).
+
+### 2026-10-16 16:25 — ARC RLE long runs and uncompressed run boundaries
+
+**Hypothesis:** Runs of repeated bytes longer than 255 bytes are chunked into multiple consecutive repeat descriptors, and short runs (<= 3 bytes) are stored uncompressed as literal bytes.
+
+**Tried:** Analyzed literal and escape patterns in `kit/samples/s09.dat` Rec 0 (`edge.bin`).
+
+**Evidence:**
+- Short run: Bytes at offset 2..4 are literal `41 41 41` (three 'A's). Stored as 3 literal bytes rather than `41 90 03` (which would also take 3 bytes). The encoder avoids escaping runs where no byte savings occur.
+- Consecutive escapes: Bytes at offset 5..8 are `90 00 90 00`. Emits two consecutive literal `0x90` bytes (`b'\x90\x90'`).
+- Long run chunking: Bytes at offset 18..24 encode 300 consecutive copies of `0x44` ('D'):
+  - `44 90 ff`: emits initial 'D' plus `255 - 1 = 254` copies = 255 bytes of 'D'.
+  - `44 90 2d`: emits initial 'D' plus `45 - 1 = 44` copies = 45 bytes of 'D'.
+  - Combined run: `255 + 45 = 300` bytes of 'D'.
+
+**Result:** CONFIRMED. Runs longer than 255 bytes are encoded by repeating the literal byte followed by `90 ff` and subsequent partial run descriptors.
+
+### 2026-10-16 16:30 — Decompression safeguards and error boundaries
+
+**Hypothesis:** ARC RLE decoding requires defensive boundary checks against truncated escapes, invalid zero-history repeats, and decompression bombs to prevent crashes.
+
+**Tried:** Synthesized edge cases against the decompressor logic:
+1. Stream ends with lone `0x90` byte.
+2. Stream starts with `0x90 <cnt>` where `cnt > 0` before any literal byte is emitted.
+3. Stream contains malicious count attempting to expand beyond `decoded_sz` or `MAX_DECOMPRESSED`.
+
+**Evidence:**
+- Case 1: Reading `count` on a trailing `0x90` causes `IndexError` unless checked. Safe handling must break / report `DamageKind.BAD_LENGTH` or `DamageKind.TRUNCATED`.
+- Case 2: Attempting `out[-1]` when `len(out) == 0` causes `IndexError`. Must be treated as malformed RLE (`DamageKind.BAD_LENGTH` / `DamageKind.INVALID_VALUE`).
+- Case 3: An unconstrained loop extending `[prev] * (cnt - 1)` could allocate gigabytes if chained. Bounding expansion against `min(decoded_sz, MAX_DECOMPRESSED)` prevents memory exhaustion.
+
+**Result:** CONFIRMED. Production decoder implementation must enforce: buffer bounds checking on escape reads, non-empty history validation for positive counts, and strict output length clamping.
