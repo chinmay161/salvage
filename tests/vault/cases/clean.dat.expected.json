@@ -1,0 +1,22 @@
+{
+  "source_file": "clean.dat",
+  "format": "VAULT",
+  "status": "ok",
+  "metadata": {
+    "entry_count": 1,
+    "flags": 0,
+    "xor_key": 66
+  },
+  "records": [
+    {
+      "id": 101,
+      "name": "hello.txt",
+      "type": "text",
+      "size": 13,
+      "sha256": "f1b36701d5b2da5d7efc8855f48b8be73cc265a38450515299df30bfcafe104b",
+      "compressed": false,
+      "text": "Hello, Vault!"
+    }
+  ],
+  "damage": []
+}

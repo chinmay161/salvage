@@ -1,0 +1,1 @@
+"""VAULT decoder test package."""
