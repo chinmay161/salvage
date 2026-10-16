@@ -149,7 +149,7 @@ Rationale for pipeline ordering: The archive encoder compresses raw data first u
   - `s10.dat` Rec 1 (`sensor.bin`) fails CRC verification (`0x5CA76CA9` vs stored `0xF55026E8`), representing intentional test damage.
 - **SHA-256 Semantics:** The contract `sha256` value is computed over the fully decoded payload (100% verified against `kit/expected_outputs/s08.dat.json`). It does NOT cover raw stored bytes or partially decoded intermediate buffers.
 
-## Compression and Obfuscation Rules
+## Compression and obfuscation
 
 ### 1. Obfuscation (Rolling XOR)
 - Applies to string table entries unconditionally, and to payload data when index entry `flags & 0x02 != 0`.
@@ -186,7 +186,7 @@ To prevent crashes, infinite loops, and memory exhaustion when decoding untruste
 - **Truncation:** If the file ends before declared index entries or payload bytes, report `truncated` damage from the truncation point to `file_size`.
 - **Missing or corrupted index:** If `index_offset` is damaged, report `index_missing` and attempt resync by scanning payload regions for `BL` markers (`42 4C`) followed by valid record IDs.
 
-## Open Questions and Unexercised Variants
+## Open questions
 
 - **Header flag bits:** Bit 0 (0x01) was confirmed active in `s09.dat` (signifying XOR-obfuscated Pascal length prefixes). Higher bits (0x02, 0x04, etc.) are unexercised in the available sample suite.
 - **Text character encoding:** Text in `s08` and `s10` is plain ASCII, while `s09` contains UTF-8 sequences ("Müller – Zürich ✓ room 12"). Decoders should decode UTF-8 with Latin-1 fallback.

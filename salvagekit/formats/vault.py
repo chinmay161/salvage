@@ -230,16 +230,15 @@ class VaultDecoder(Decoder):
 
         # --- String table ---
         filenames: dict[int, str] = {}
-        name_lengths: dict[int, int] = {}
-        name_offsets_abs: dict[int, int] = {}
+        name_field_offsets: dict[int, int] = {}
+        name_field_lengths: dict[int, int] = {}
 
         for entry in entries:
             i = entry["idx"]
             name_off = entry["name_offset"]
             str_abs_offset = string_table_offset + name_off
-            name_offsets_abs[i] = str_abs_offset
 
-            if str_abs_offset >= index_offset or str_abs_offset < string_table_offset:
+            if str_abs_offset >= index_offset or str_abs_offset < string_table_offset or str_abs_offset >= file_size:
                 result.damage.append(
                     Damage(
                         entry["entry_start"] + 4,
@@ -249,7 +248,8 @@ class VaultDecoder(Decoder):
                     )
                 )
                 filenames[i] = f"record_{entry['id']}.bin"
-                name_lengths[i] = 0
+                name_field_offsets[i] = entry["entry_start"] + 4
+                name_field_lengths[i] = 4
                 continue
 
             with reader.at(str_abs_offset) as ok:
@@ -263,7 +263,8 @@ class VaultDecoder(Decoder):
                         )
                     )
                     filenames[i] = f"record_{entry['id']}.bin"
-                    name_lengths[i] = 0
+                    name_field_offsets[i] = entry["entry_start"] + 4
+                    name_field_lengths[i] = 4
                     continue
 
                 raw_len = reader.u8(f"string[{i}].len")
@@ -277,27 +278,33 @@ class VaultDecoder(Decoder):
                         )
                     )
                     filenames[i] = f"record_{entry['id']}.bin"
-                    name_lengths[i] = 0
+                    name_field_offsets[i] = str_abs_offset
+                    name_field_lengths[i] = max(0, file_size - str_abs_offset)
                     continue
 
                 name_len = (raw_len ^ xor_key) if (flags & 0x01) else raw_len
-                name_lengths[i] = name_len
+                total_str_len = 1 + name_len
+                max_avail = max(0, min(index_offset, file_size) - str_abs_offset)
 
-                if str_abs_offset + 1 + name_len > index_offset:
+                if total_str_len > max_avail:
                     result.damage.append(
                         Damage(
                             str_abs_offset,
-                            min(str_abs_offset + 1 + name_len, file_size),
+                            min(str_abs_offset + total_str_len, file_size),
                             DamageKind.BAD_LENGTH,
                             f"entry {i} string length {name_len} exceeds string table",
                         )
                     )
                     name_chars = reader.bytes(
-                        max(0, index_offset - (str_abs_offset + 1)),
+                        max(0, max_avail - 1),
                         f"string[{i}].chars",
                     )
+                    name_field_offsets[i] = str_abs_offset
+                    name_field_lengths[i] = max_avail
                 else:
                     name_chars = reader.bytes(name_len, f"string[{i}].chars")
+                    name_field_offsets[i] = str_abs_offset
+                    name_field_lengths[i] = total_str_len
 
                 # De-XOR characters
                 dec_bytes = bytes(
@@ -322,9 +329,11 @@ class VaultDecoder(Decoder):
             rec_flags = entry["rec_flags"]
             type_code = entry["type_code"]
             name = filenames.get(i, f"entry_{rec_id}")
-            str_abs_offset = name_offsets_abs.get(i, entry["entry_start"])
-            name_len = name_lengths.get(i, 0)
-            name_field_len = min(1 + name_len, max(0, file_size - str_abs_offset))
+
+            name_off_safe = name_field_offsets.get(i, entry["entry_start"])
+            name_len_safe = name_field_lengths.get(i, 0)
+            name_off_safe = max(0, min(name_off_safe, file_size))
+            name_len_safe = max(0, min(name_len_safe, file_size - name_off_safe))
 
             if stored_sz < 4:
                 result.damage.append(
@@ -427,7 +436,8 @@ class VaultDecoder(Decoder):
 
                 issues: list[DamageKind] = []
                 crc_match = stored_crc is not None and computed_crc == stored_crc
-                payload_source_len = min(payload_len, max(0, file_size - (data_off + 4)))
+                payload_src_offset = max(0, min(data_off + 4, file_size))
+                payload_src_len = max(0, min(payload_len, file_size - payload_src_offset))
 
                 if crc_match and framing_ok and length_ok and not rle_corrupt:
                     rec_status = Status.VERIFIED
@@ -477,10 +487,10 @@ class VaultDecoder(Decoder):
                 # Build fields in contract shape order
                 fields = [
                     Field("id", rec_id, entry["entry_start"], 2, Status.CONSISTENT, "record ID"),
-                    Field("name", name, str_abs_offset, name_field_len, Status.CONSISTENT, "decoded filename"),
+                    Field("name", name, name_off_safe, name_len_safe, Status.CONSISTENT, "decoded filename"),
                     Field("type", type_str, entry["entry_start"] + 2, 1, Status.CONSISTENT, f"type code {type_code}"),
                     Field("size", decoded_sz, entry["entry_start"] + 14, 2, Status.CONSISTENT, "decoded size"),
-                    Field("sha256", sha256_hex, data_off + 4, payload_source_len, rec_status, evidence),
+                    Field("sha256", sha256_hex, payload_src_offset, payload_src_len, rec_status, evidence),
                     Field("compressed", bool(rec_flags & 0x01), entry["entry_start"] + 3, 1, Status.CONSISTENT, "compression flag"),
                 ]
 
@@ -490,28 +500,32 @@ class VaultDecoder(Decoder):
                     except UnicodeDecodeError:
                         text_val = decoded_payload.decode("latin-1", errors="replace")
                     fields.append(
-                        Field("text", text_val, data_off + 4, payload_source_len, rec_status, evidence)
+                        Field("text", text_val, payload_src_offset, payload_src_len, rec_status, evidence)
                     )
                 elif type_str == "bitmap":
                     if len(decoded_payload) >= 2:
                         width = decoded_payload[0]
                         height = decoded_payload[1]
+                        w_len = min(1, max(0, file_size - payload_src_offset))
+                        h_off = max(0, min(payload_src_offset + 1, file_size))
+                        h_len = min(1, max(0, file_size - h_off))
                         fields.append(
-                            Field("width", width, data_off + 4, min(1, payload_source_len), rec_status, "bitmap width")
+                            Field("width", width, payload_src_offset, w_len, rec_status, "bitmap width")
                         )
                         fields.append(
-                            Field("height", height, data_off + 5, min(1, max(0, payload_source_len - 1)), rec_status, "bitmap height")
+                            Field("height", height, h_off, h_len, rec_status, "bitmap height")
                         )
                     else:
                         fields.append(
-                            Field("width", None, data_off + 4, 0, Status.LOST, "bitmap payload too short for dimensions")
+                            Field("width", None, payload_src_offset, 0, Status.LOST, "bitmap payload too short for dimensions")
                         )
                         fields.append(
-                            Field("height", None, data_off + 4, 0, Status.LOST, "bitmap payload too short for dimensions")
+                            Field("height", None, payload_src_offset, 0, Status.LOST, "bitmap payload too short for dimensions")
                         )
 
+                rec_off = max(0, min(data_off, file_size))
                 record = Record(
-                    offset=data_off,
+                    offset=rec_off,
                     status=rec_status,
                     kind="record",
                     fields=fields,
