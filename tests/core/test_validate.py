@@ -185,10 +185,10 @@ class PipelineValidationTests(unittest.TestCase):
     """B3 in a real run: invalid output replaced, invalid report still written."""
 
     def run_with(self, mutate_output=None, mutate_entry=None):
-        real = pipeline._process
+        real = pipeline._collect
 
-        def fake(item, package, timeout):
-            output, entry, errs = real(item, package, timeout)
+        def fake(item, worker, sha):
+            output, entry, errs = real(item, worker, sha)
             if item.rel == "bad.stub":
                 if mutate_output:
                     mutate_output(output)
@@ -204,9 +204,9 @@ class PipelineValidationTests(unittest.TestCase):
             with open(os.path.join(inp, name), "wb") as fh:
                 fh.write(CLEAN)
         stderr = io.StringIO()
-        with mock.patch.object(pipeline, "_process", fake), \
+        with mock.patch.object(pipeline, "_collect", fake), \
                 mock.patch.object(pipeline.sys, "stderr", stderr):
-            rep = pipeline.run(inp, out, decoder_package=PKG, timeout=20)
+            rep = pipeline.run(inp, out, decoder_package=PKG, timeout=20, jobs=1)
         files = {}
         for name in ("bad.stub.json", "good.stub.json", "report.json"):
             with open(os.path.join(out, name), encoding="utf-8") as fh:

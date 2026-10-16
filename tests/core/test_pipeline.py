@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from salvage.core import pipeline, validate
+from tests.pipeline_helpers import run_checked
 from salvage.formats.stub import MAGIC
 
 PKG = "tests.fixtures.pipeline_formats"
@@ -67,8 +68,10 @@ class PipelineTests(unittest.TestCase):
         _make_tree(cls.inp, INPUTS)
         cls.out1 = os.path.join(cls.tmp, "out1")
         cls.out2 = os.path.join(cls.tmp, "out2")
-        cls.report = pipeline.run(cls.inp, cls.out1, decoder_package=PKG, timeout=TIMEOUT)
-        pipeline.run(cls.inp, cls.out2, decoder_package=PKG, timeout=TIMEOUT)
+        # out1 sequential, out2 with 4 workers: test_deterministic proves they are
+        # byte-identical (B7), hang/crash/raise fixtures included.
+        cls.report = run_checked(cls.inp, cls.out1, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
+        run_checked(cls.inp, cls.out2, decoder_package=PKG, timeout=TIMEOUT, jobs=4)
         cls.tree1 = _read_tree(cls.out1)
         cls.tree2 = _read_tree(cls.out2)
         cls.entries = {e["input"]: e for e in cls.report["files"]}
@@ -147,7 +150,7 @@ class PipelineTests(unittest.TestCase):
         inp = os.path.join(self.tmp, "clean-in")
         out = os.path.join(self.tmp, "clean-out")
         _make_tree(inp, {"clean.stub": CLEAN})
-        pipeline.run(inp, out, decoder_package=PKG, timeout=TIMEOUT)
+        run_checked(inp, out, decoder_package=PKG, timeout=TIMEOUT, jobs=2)
         with open(os.path.join(out, "clean.stub.json"), "rb") as fh:
             self.assertEqual(fh.read(), self.tree1["clean.stub.json"])
 
@@ -195,8 +198,10 @@ class PipelineTests(unittest.TestCase):
             self.assertIsNone(self.entries[rel]["coverage"], rel)
         self.assertEqual(self.entries["big.t"]["coverage"]["bytes_explained"], 0)
 
-    def test_deterministic(self):
-        self.assertEqual(self.tree1, self.tree2)
+    def test_deterministic_and_jobs_1_vs_4_byte_identical(self):
+        self.assertEqual(sorted(self.tree1), sorted(self.tree2))
+        for rel in self.tree1:
+            self.assertEqual(self.tree1[rel], self.tree2[rel], rel)
 
     def test_lf_and_forward_slashes(self):
         for rel, data in self.tree1.items():
@@ -223,7 +228,7 @@ class SlowProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
             _make_tree(inp, {"x.bin": b"anything"})
-            rep = pipeline.run(inp, out, decoder_package="tests.fixtures.slowprobe_formats",
+            rep = run_checked(inp, out, decoder_package="tests.fixtures.slowprobe_formats", jobs=1,
                                timeout=TIMEOUT)
             entry = rep["files"][0]
             self.assertEqual((entry["format"], entry["status"], entry["confidence"]),
@@ -236,7 +241,7 @@ class RunErrorTests(unittest.TestCase):
     def test_missing_input_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out")
-            rep = pipeline.run(os.path.join(tmp, "nope"), out, decoder_package=PKG)
+            rep = run_checked(os.path.join(tmp, "nope"), out, decoder_package=PKG, jobs=1)
             self.assertEqual(rep["summary"]["files"], 0)
             self.assertEqual(len(rep["errors"]), 1)
             with open(os.path.join(out, "report.json"), encoding="utf-8") as fh:
@@ -245,7 +250,7 @@ class RunErrorTests(unittest.TestCase):
     def test_never_overwrites_an_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             _make_tree(tmp, {"a": CLEAN, "a.json": b"precious"})
-            rep = pipeline.run(tmp, tmp, decoder_package=PKG, timeout=TIMEOUT)
+            rep = run_checked(tmp, tmp, decoder_package=PKG, timeout=TIMEOUT, jobs=1)
             with open(os.path.join(tmp, "a.json"), "rb") as fh:
                 self.assertEqual(fh.read(), b"precious")
             entry = next(e for e in rep["files"] if e["input"] == "a")
@@ -258,13 +263,15 @@ class RunErrorTests(unittest.TestCase):
             inp, out = os.path.join(tmp, "in"), os.path.join(tmp, "out")
             _make_tree(inp, {"big.stub": CLEAN})
             with mock.patch.object(pipeline, "MAX_FILE_BYTES", 10), \
-                    mock.patch.object(pipeline.isolate, "run_isolated") as spawn:
-                rep = pipeline.run(inp, out, decoder_package=PKG)
+                    mock.patch.object(pipeline.isolate, "Worker") as spawn, \
+                    mock.patch.object(pipeline, "sha256_file") as sha:
+                rep = run_checked(inp, out, decoder_package=PKG, jobs=1)
             spawn.assert_not_called()
+            sha.assert_not_called()  # never read, not even to hash it
             entry = rep["files"][0]
             self.assertEqual(entry["status"], "failed")
             self.assertIn("too large", entry["errors"][0])
-            self.assertEqual(len(entry["sha256"]), 64)
+            self.assertIsNone(entry["sha256"])
 
 
 if __name__ == "__main__":

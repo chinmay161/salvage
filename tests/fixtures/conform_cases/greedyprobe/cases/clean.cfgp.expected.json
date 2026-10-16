@@ -1,0 +1,91 @@
+{
+  "confidence": 1.0,
+  "damage": [],
+  "errors": [],
+  "format": "CF-GREEDYPROBE",
+  "members": [],
+  "meta": {
+    "declared_count": 3,
+    "records_found": 3,
+    "records_verified": 3
+  },
+  "records": [
+    {
+      "fields": [
+        {
+          "evidence": "exact magic match",
+          "length": 4,
+          "name": "magic",
+          "offset": 0,
+          "status": "verified",
+          "value": "CFGP"
+        },
+        {
+          "evidence": "CRC-32 0xaeef697f of the header matches",
+          "length": 2,
+          "name": "count",
+          "offset": 4,
+          "status": "verified",
+          "value": 3
+        }
+      ],
+      "kind": "header",
+      "offset": 0,
+      "status": "verified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "CRC-32 0xd0e0396a matches",
+          "length": 5,
+          "name": "text",
+          "offset": 14,
+          "status": "verified",
+          "value": "alpha"
+        }
+      ],
+      "kind": "text",
+      "offset": 10,
+      "status": "verified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "CRC-32 0x4abc3c20 matches",
+          "length": 13,
+          "name": "text",
+          "offset": 27,
+          "status": "verified",
+          "value": "bravo charlie"
+        }
+      ],
+      "kind": "text",
+      "offset": 23,
+      "status": "verified"
+    },
+    {
+      "fields": [
+        {
+          "evidence": "CRC-32 0x9643fed9 matches",
+          "length": 5,
+          "name": "text",
+          "offset": 48,
+          "status": "verified",
+          "value": "delta"
+        }
+      ],
+      "kind": "text",
+      "offset": 44,
+      "status": "verified"
+    }
+  ],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "clean.cfgp",
+    "sha256": "645766e8ff37bec65de2a721a45deec48fd8dbbde8f3ab989de08d9e20c8078c",
+    "size": 57
+  },
+  "status": "decoded",
+  "variant": null,
+  "warnings": []
+}

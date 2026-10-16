@@ -50,7 +50,7 @@ def run_cases(cases: Path, package: str = "salvage.formats") -> dict[str, Any]:
         os.makedirs(inp)
         for name in inputs:
             shutil.copyfile(cases / name, os.path.join(inp, name))
-        rep = pipeline.run(inp, out, decoder_package=package)
+        rep = pipeline.run(inp, out, decoder_package=package, jobs=1)
         got: dict[str, Any] = {}
         for entry in rep["files"]:
             rel = entry.get("output")

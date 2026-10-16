@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 
 from salvage.core import fallback, identify, isolate
@@ -146,9 +147,14 @@ class IsolateTests(unittest.TestCase):
                     self.assertEqual(payload["entry"]["status"], "decoded")
 
     def test_read_error_is_data(self):
-        payload = isolate.process_file(os.path.join(os.getcwd(), "no-such-file"), "x", PKG)
+        # A folder cannot be read as a file (Windows: permission denied;
+        # POSIX: not a regular file). A missing file is "file disappeared".
+        with tempfile.TemporaryDirectory() as folder:
+            payload = isolate.process_file(folder, "x", PKG)
         self.assertEqual(payload["entry"]["status"], "failed")
         self.assertTrue(payload["entry"]["errors"][0].startswith("cannot read file"))
+        payload = isolate.process_file(os.path.join(os.getcwd(), "no-such-file"), "x", PKG)
+        self.assertEqual(payload["entry"]["errors"], ["file disappeared"])
 
 
 if __name__ == "__main__":
