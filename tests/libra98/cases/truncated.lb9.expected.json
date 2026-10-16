@@ -1,0 +1,35 @@
+{
+  "confidence": 0.8,
+  "damage": [
+    {
+      "end": 25,
+      "kind": "truncated",
+      "reason": "file truncated inside record 0",
+      "start": 16
+    }
+  ],
+  "errors": [],
+  "format": "LIBRA-98",
+  "members": [],
+  "meta": {
+    "branch_id": 100,
+    "created": "1998-10-03T11:20:22",
+    "data_offset": 16,
+    "declared_record_count": 1,
+    "encoding": "cp437",
+    "version": 2,
+    "version_minor": 0
+  },
+  "records": [],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "truncated.lb9",
+    "sha256": "52cc13af4c49180206a50f3fa101d6b29a48f3118323a1423579e53285ef7461",
+    "size": 25
+  },
+  "status": "partial",
+  "variant": null,
+  "warnings": [
+    "declared 1 records, but only 0 recovered"
+  ]
+}

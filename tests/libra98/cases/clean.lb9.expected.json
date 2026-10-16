@@ -1,0 +1,122 @@
+{
+  "confidence": 1.0,
+  "damage": [],
+  "errors": [],
+  "format": "LIBRA-98",
+  "members": [],
+  "meta": {
+    "branch_id": 100,
+    "created": "1998-10-03T11:20:22",
+    "data_offset": 16,
+    "declared_record_count": 1,
+    "encoding": "cp437",
+    "version": 2,
+    "version_minor": 0
+  },
+  "records": [
+    {
+      "fields": [
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 4,
+          "name": "id",
+          "offset": 19,
+          "status": "verified",
+          "value": 1001
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 4,
+          "name": "title",
+          "offset": 24,
+          "status": "verified",
+          "value": "Dune"
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 13,
+          "name": "author",
+          "offset": 29,
+          "status": "verified",
+          "value": "Frank Herbert"
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 2,
+          "name": "year",
+          "offset": 42,
+          "status": "verified",
+          "value": 1965
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 2,
+          "name": "price_cents",
+          "offset": 44,
+          "status": "verified",
+          "value": 799
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 1,
+          "name": "copies",
+          "offset": 46,
+          "status": "verified",
+          "value": 2
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 10,
+          "name": "isbn",
+          "offset": 47,
+          "status": "verified",
+          "value": "0441172717"
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 1,
+          "name": "checked_out",
+          "offset": 18,
+          "status": "verified",
+          "value": false
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 1,
+          "name": "deleted",
+          "offset": 18,
+          "status": "verified",
+          "value": false
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 1,
+          "name": "reference_only",
+          "offset": 18,
+          "status": "verified",
+          "value": false
+        },
+        {
+          "evidence": "SUM8 checksum matched",
+          "length": 2,
+          "name": "due_date",
+          "offset": 57,
+          "status": "verified",
+          "value": null
+        }
+      ],
+      "kind": "book",
+      "offset": 16,
+      "status": "verified"
+    }
+  ],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "clean.lb9",
+    "sha256": "d0dd8da607d584481f38ed5ce8e514a0fb93d6ffdb81222ef2c22d087315d537",
+    "size": 66
+  },
+  "status": "decoded",
+  "variant": null,
+  "warnings": []
+}

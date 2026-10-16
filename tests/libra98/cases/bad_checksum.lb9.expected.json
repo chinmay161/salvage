@@ -1,0 +1,135 @@
+{
+  "confidence": 0.8,
+  "damage": [
+    {
+      "end": 60,
+      "kind": "checksum",
+      "reason": "record 0 checksum mismatch",
+      "start": 16
+    },
+    {
+      "end": 66,
+      "kind": "checksum",
+      "reason": "trailer checksum mismatch: stored 0x0e50, computed 0x0e4f",
+      "start": 60
+    }
+  ],
+  "errors": [],
+  "format": "LIBRA-98",
+  "members": [],
+  "meta": {
+    "branch_id": 100,
+    "created": "1998-10-03T11:20:22",
+    "data_offset": 16,
+    "declared_record_count": 1,
+    "encoding": "cp437",
+    "version": 2,
+    "version_minor": 0
+  },
+  "records": [
+    {
+      "fields": [
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 4,
+          "name": "id",
+          "offset": 19,
+          "status": "unverified",
+          "value": 745
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 4,
+          "name": "title",
+          "offset": 24,
+          "status": "unverified",
+          "value": "Dune"
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 13,
+          "name": "author",
+          "offset": 29,
+          "status": "unverified",
+          "value": "Frank Herbert"
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 2,
+          "name": "year",
+          "offset": 42,
+          "status": "unverified",
+          "value": 1965
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 2,
+          "name": "price_cents",
+          "offset": 44,
+          "status": "unverified",
+          "value": 799
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 1,
+          "name": "copies",
+          "offset": 46,
+          "status": "unverified",
+          "value": 2
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 10,
+          "name": "isbn",
+          "offset": 47,
+          "status": "unverified",
+          "value": "0441172717"
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 1,
+          "name": "checked_out",
+          "offset": 18,
+          "status": "unverified",
+          "value": false
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 1,
+          "name": "deleted",
+          "offset": 18,
+          "status": "unverified",
+          "value": false
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 1,
+          "name": "reference_only",
+          "offset": 18,
+          "status": "unverified",
+          "value": false
+        },
+        {
+          "evidence": "SUM8 mismatch: stored 0x5f, computed 0x5e",
+          "length": 2,
+          "name": "due_date",
+          "offset": 57,
+          "status": "unverified",
+          "value": null
+        }
+      ],
+      "kind": "book",
+      "offset": 16,
+      "status": "unverified"
+    }
+  ],
+  "schema_version": "provisional-1",
+  "source": {
+    "path": "bad_checksum.lb9",
+    "sha256": "b5976e8189675d2968057175d2f30c1bf04bd0b80a77cebf1ae44bf670deb35f",
+    "size": 66
+  },
+  "status": "partial",
+  "variant": null,
+  "warnings": []
+}
