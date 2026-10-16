@@ -136,142 +136,148 @@ class WksDecoder(Decoder):
             rec_count += 1
             payload_start = reader.tell()
 
+            payload_end = payload_start + length
+
             if op == OP_EOF:
                 # Clean end of spreadsheet stream
                 seen_eof = True
+                if reader.remaining() > 0:
+                    rem_off = reader.tell()
+                    rem_len = reader.remaining()
+                    reader.bytes(rem_len, "trailing_bytes")
+                    result.damage.append(Damage(rem_off, size, DamageKind.UNPARSED_BYTES,
+                                                f"trailing unparsed bytes ({rem_len} bytes) after EOF record",
+                                                lossy=False))
+                    result.warnings.append("trailing bytes after EOF record")
                 break
 
             elif op == OP_RANGE:
-                c1 = reader.u16le("range.col_start")
-                r1 = reader.u16le("range.row_start")
-                c2 = reader.u16le("range.col_end")
-                r2 = reader.u16le("range.row_end")
-                if c1 is not None and r1 is not None and c2 is not None and r2 is not None:
-                    result.meta["declared_range"] = f"{cell_label(c1, r1)}:{cell_label(c2, r2)}"
-                if length > 8:
-                    reader.bytes(length - 8, "range.extra")
+                if length >= 8:
+                    c1 = reader.u16le("range.col_start")
+                    r1 = reader.u16le("range.row_start")
+                    c2 = reader.u16le("range.col_end")
+                    r2 = reader.u16le("range.row_end")
+                    if c1 is not None and r1 is not None and c2 is not None and r2 is not None:
+                        result.meta["declared_range"] = f"{cell_label(c1, r1)}:{cell_label(c2, r2)}"
 
             elif op == OP_COL_WIDTH:
-                col = reader.u16le("col_width.col")
-                width = reader.u8("col_width.width")
-                if col is not None and width is not None:
-                    if "column_widths" not in result.meta:
-                        result.meta["column_widths"] = {}
-                    result.meta["column_widths"][col_to_letter(col)] = width
-                if length > 3:
-                    reader.bytes(length - 3, "col_width.extra")
+                if length >= 3:
+                    col = reader.u16le("col_width.col")
+                    width = reader.u8("col_width.width")
+                    if col is not None and width is not None:
+                        if "column_widths" not in result.meta:
+                            result.meta["column_widths"] = {}
+                        result.meta["column_widths"][col_to_letter(col)] = width
 
             elif op == OP_BLANK:
-                fmt = reader.u8("blank.fmt")
-                col = reader.u16le("blank.col")
-                row = reader.u16le("blank.row")
-                if col is not None and row is not None:
-                    c_name = cell_label(col, row)
-                    fields = [
-                        Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
-                        Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
-                        Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
-                        Field("type", "blank", rec_off, 2, Status.CONSISTENT),
-                        Field("value", None, rec_off, 0, Status.CONSISTENT),
-                    ]
-                    result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
-                                                 kind="blank", fields=fields))
-                if length > 5:
-                    reader.bytes(length - 5, "blank.extra")
+                if length >= 5:
+                    fmt = reader.u8("blank.fmt")
+                    col = reader.u16le("blank.col")
+                    row = reader.u16le("blank.row")
+                    if col is not None and row is not None:
+                        c_name = cell_label(col, row)
+                        fields = [
+                            Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
+                            Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
+                            Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
+                            Field("type", "blank", rec_off, 2, Status.CONSISTENT),
+                            Field("value", None, rec_off, 0, Status.CONSISTENT),
+                        ]
+                        result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
+                                                     kind="blank", fields=fields))
 
             elif op == OP_INTEGER:
-                fmt = reader.u8("integer.fmt")
-                col = reader.u16le("integer.col")
-                row = reader.u16le("integer.row")
-                val = reader.i16le("integer.value")
-                if col is not None and row is not None and val is not None:
-                    c_name = cell_label(col, row)
-                    fields = [
-                        Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
-                        Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
-                        Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
-                        Field("type", "integer", rec_off, 2, Status.CONSISTENT),
-                        Field("value", val, rec_off + 9, 2, Status.CONSISTENT),
-                    ]
-                    # Date check: format bits 4-6 == 7 and bits 0-3 in (1, 2, 3, 8)
-                    if fmt is not None and (fmt & 0x70) == 0x70 and (fmt & 0x0F) in (1, 2, 3, 8):
-                        iso = lotus_date_to_iso(val)
-                        if iso:
-                            fields.append(Field("iso_date", iso, rec_off + 9, 2, Status.CONSISTENT))
-                    result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
-                                                 kind="integer", fields=fields))
-                if length > 7:
-                    reader.bytes(length - 7, "integer.extra")
+                if length >= 7:
+                    fmt = reader.u8("integer.fmt")
+                    col = reader.u16le("integer.col")
+                    row = reader.u16le("integer.row")
+                    val = reader.i16le("integer.value")
+                    if col is not None and row is not None and val is not None:
+                        c_name = cell_label(col, row)
+                        fields = [
+                            Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
+                            Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
+                            Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
+                            Field("type", "integer", rec_off, 2, Status.CONSISTENT),
+                            Field("value", val, rec_off + 9, 2, Status.CONSISTENT),
+                        ]
+                        # Date check: format bits 4-6 == 7 and bits 0-3 in (1, 2, 3, 8)
+                        if fmt is not None and (fmt & 0x70) == 0x70 and (fmt & 0x0F) in (1, 2, 3, 8):
+                            iso = lotus_date_to_iso(val)
+                            if iso:
+                                fields.append(Field("iso_date", iso, rec_off + 9, 2, Status.CONSISTENT))
+                        result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
+                                                     kind="integer", fields=fields))
 
             elif op == OP_NUMBER:
-                fmt = reader.u8("number.fmt")
-                col = reader.u16le("number.col")
-                row = reader.u16le("number.row")
-                val_raw = reader.unpack("<d", "number.value")
-                val = val_raw[0] if val_raw else None
-                if col is not None and row is not None and val is not None:
-                    c_name = cell_label(col, row)
-                    fields = [
-                        Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
-                        Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
-                        Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
-                        Field("type", "number", rec_off, 2, Status.CONSISTENT),
-                        Field("value", val, rec_off + 9, 8, Status.CONSISTENT),
-                    ]
-                    if fmt is not None and (fmt & 0x70) == 0x70 and (fmt & 0x0F) in (1, 2, 3, 8):
-                        iso = lotus_date_to_iso(int(val))
-                        if iso:
-                            fields.append(Field("iso_date", iso, rec_off + 9, 8, Status.CONSISTENT))
-                    result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
-                                                 kind="number", fields=fields))
-                if length > 13:
-                    reader.bytes(length - 13, "number.extra")
+                if length >= 13:
+                    fmt = reader.u8("number.fmt")
+                    col = reader.u16le("number.col")
+                    row = reader.u16le("number.row")
+                    val_raw = reader.unpack("<d", "number.value")
+                    val = val_raw[0] if val_raw else None
+                    if col is not None and row is not None and val is not None:
+                        c_name = cell_label(col, row)
+                        fields = [
+                            Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
+                            Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
+                            Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
+                            Field("type", "number", rec_off, 2, Status.CONSISTENT),
+                            Field("value", val, rec_off + 9, 8, Status.CONSISTENT),
+                        ]
+                        if fmt is not None and (fmt & 0x70) == 0x70 and (fmt & 0x0F) in (1, 2, 3, 8):
+                            iso = lotus_date_to_iso(int(val))
+                            if iso:
+                                fields.append(Field("iso_date", iso, rec_off + 9, 8, Status.CONSISTENT))
+                        result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
+                                                     kind="number", fields=fields))
 
             elif op == OP_LABEL:
-                fmt = reader.u8("label.fmt")
-                col = reader.u16le("label.col")
-                row = reader.u16le("label.row")
-                pfx = reader.u8("label.prefix")
-                alignment = ALIGNMENT_MAP.get(pfx, "left")
-                str_bytes = reader.bytes(length - 6, "label.text")
-                raw_str = str_bytes.split(b"\x00", 1)[0]
-                text_val = raw_str.decode("latin1", errors="replace")
-                if col is not None and row is not None:
-                    c_name = cell_label(col, row)
-                    fields = [
-                        Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
-                        Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
-                        Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
-                        Field("type", "label", rec_off, 2, Status.CONSISTENT),
-                        Field("value", text_val, rec_off + 10, len(raw_str), Status.CONSISTENT),
-                        Field("alignment", alignment, rec_off + 9, 1, Status.CONSISTENT),
-                    ]
-                    result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
-                                                 kind="label", fields=fields))
+                if length >= 6:
+                    fmt = reader.u8("label.fmt")
+                    col = reader.u16le("label.col")
+                    row = reader.u16le("label.row")
+                    pfx = reader.u8("label.prefix")
+                    alignment = ALIGNMENT_MAP.get(pfx, "left")
+                    str_bytes = reader.bytes(length - 6, "label.text")
+                    raw_str = str_bytes.split(b"\x00", 1)[0]
+                    text_val = raw_str.decode("latin1", errors="replace")
+                    if col is not None and row is not None:
+                        c_name = cell_label(col, row)
+                        fields = [
+                            Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
+                            Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
+                            Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
+                            Field("type", "label", rec_off, 2, Status.CONSISTENT),
+                            Field("value", text_val, rec_off + 10, len(raw_str), Status.CONSISTENT),
+                            Field("alignment", alignment, rec_off + 9, 1, Status.CONSISTENT),
+                        ]
+                        result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
+                                                     kind="label", fields=fields))
 
             elif op == OP_FORMULA:
-                fmt = reader.u8("formula.fmt")
-                col = reader.u16le("formula.col")
-                row = reader.u16le("formula.row")
-                cached_raw = reader.unpack("<d", "formula.cached_value")
-                cached_val = cached_raw[0] if cached_raw else None
-                f_len = reader.u16le("formula.length")
-                f_bytes = reader.bytes(f_len, "formula.bytes") if f_len is not None else b""
-                if col is not None and row is not None and cached_val is not None:
-                    c_name = cell_label(col, row)
-                    fields = [
-                        Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
-                        Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
-                        Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
-                        Field("type", "formula", rec_off, 2, Status.CONSISTENT),
-                        Field("cached_value", cached_val, rec_off + 9, 8, Status.CONSISTENT),
-                        Field("formula_raw_hex", f_bytes.hex(), rec_off + 19, len(f_bytes), Status.CONSISTENT),
-                    ]
-                    result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
-                                                 kind="formula", fields=fields))
-                rem = length - (15 + (f_len or 0))
-                if rem > 0:
-                    reader.bytes(rem, "formula.extra")
+                if length >= 15:
+                    fmt = reader.u8("formula.fmt")
+                    col = reader.u16le("formula.col")
+                    row = reader.u16le("formula.row")
+                    cached_raw = reader.unpack("<d", "formula.cached_value")
+                    cached_val = cached_raw[0] if cached_raw else None
+                    raw_f_len = reader.u16le("formula.length")
+                    max_f_len = max(0, length - 15)
+                    actual_f_len = min(raw_f_len or 0, max_f_len)
+                    f_bytes = reader.bytes(actual_f_len, "formula.bytes")
+                    if col is not None and row is not None and cached_val is not None:
+                        c_name = cell_label(col, row)
+                        fields = [
+                            Field("cell", c_name, rec_off + 5, 4, Status.CONSISTENT),
+                            Field("col", col, rec_off + 5, 2, Status.CONSISTENT),
+                            Field("row", row, rec_off + 7, 2, Status.CONSISTENT),
+                            Field("type", "formula", rec_off, 2, Status.CONSISTENT),
+                            Field("cached_value", cached_val, rec_off + 9, 8, Status.CONSISTENT),
+                            Field("formula_raw_hex", f_bytes.hex(), rec_off + 19, len(f_bytes), Status.CONSISTENT),
+                        ]
+                        result.records.append(Record(offset=rec_off, status=Status.CONSISTENT,
+                                                     kind="formula", fields=fields))
 
             elif op in KNOWN_SETTINGS:
                 reader.bytes(length, f"settings[0x{op:04x}]")
@@ -283,6 +289,11 @@ class WksDecoder(Decoder):
                                             f"unknown record opcode 0x{op:04x} length {length}",
                                             lossy=False))
                 result.warnings.append(f"unknown record 0x{op:04x} at offset {rec_off}")
+
+            # Ensure reader is exactly at payload_end regardless of unread/extra payload bytes
+            extra = payload_end - reader.tell()
+            if extra > 0:
+                reader.bytes(extra, f"record[0x{op:04x}].padding")
 
         if not seen_eof and not any(d.kind == DamageKind.TRUNCATED for d in result.damage):
             result.damage.append(Damage(reader.tell(), size, DamageKind.TRUNCATED, "file truncated before EOF record"))

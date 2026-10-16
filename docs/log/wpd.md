@@ -20,6 +20,16 @@
 
 **Result:** CONFIRMED. Key at offset 0x0b-0x0c detects encryption without cracking.
 
+### 2026-10-16 14:08 — Document pointer endianness hypothesis
+
+**Hypothesis:** The document text pointer at header offset 0x04 is stored as a big-endian 32-bit integer (`>I`), matching Motorola 68000 heritage.
+
+**Tried:** Unpacked bytes 0x04..0x08 as `>I` on `s14.wpd` and `s15.wpd` (hex `30 00 00 00`).
+
+**Evidence:** Unpacking `30 00 00 00` as big-endian yields offset `0x30000000` (805,306,368 bytes), which far exceeds sample file sizes (288 bytes and 136 bytes). Little-endian `<I` yields `0x00000030` (48 bytes), which points directly to the start of body text `"MEMORANDUM\n"`.
+
+**Result:** REJECTED. The pointer is 32-bit unsigned little-endian `<I`, not big-endian.
+
 ### 2026-10-16 14:10 — Hard returns vs soft returns in paragraph reconstruction
 
 **Hypothesis:** Hard return `0x0A` marks paragraph boundaries, while soft return `0x0D` represents wrapped lines within a paragraph.

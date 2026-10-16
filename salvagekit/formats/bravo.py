@@ -23,21 +23,25 @@ class BravoDecoder(Decoder):
 
     def probe(self, data: bytes) -> float:
         """Probe for Bravo format: ASCII text delimited by CR and ended by Ctrl-Z."""
-        if len(data) < 4:
-            return 0.0
-        prefix = data[:4096]
-        ctrl_z = prefix.find(b"\x1a")
-        if ctrl_z == -1:
-            return 0.0
-        text = prefix[:ctrl_z]
-        if len(text) < 2 or b"\r" not in text:
-            return 0.0
-        if b"\n" in text:
-            return 0.0
-        for b in text:
-            if not (0x20 <= b <= 0x7E or b in (0x0D, 0x09)):
+        try:
+            if len(data) < 4:
                 return 0.0
-        return 1.0
+            ctrl_z = data.find(b"\x1a")
+            if ctrl_z == -1:
+                return 0.0
+            text = data[:ctrl_z]
+            if len(text) < 2 or b"\r" not in text:
+                return 0.0
+            if b"\n" in text:
+                return 0.0
+            # Validate character encoding across text
+            check_slice = text if len(text) <= 2048 else (text[:1024] + text[-512:])
+            for b in check_slice:
+                if not (0x20 <= b <= 0x7E or b in (0x0D, 0x09)):
+                    return 0.0
+            return 1.0
+        except Exception:
+            return 0.0
 
     def decode(self, reader: SafeReader) -> DecodeResult:
         """Decode Bravo file into paragraphs and damage."""
@@ -66,10 +70,20 @@ class BravoDecoder(Decoder):
                 result.warnings.append("missing formatting trailer")
             else:
                 trailer_bytes = reader.bytes(trailer_len, "trailer")
-                if trailer_len < 15 or not trailer_bytes.endswith(b"\x00"):
+                if not trailer_bytes.endswith(b"\x00") or trailer_len < 3:
                     result.damage.append(Damage(ctrl_z + 1, size, DamageKind.TRUNCATED,
                                                 "incomplete formatting trailer", lossy=True))
                     result.warnings.append("incomplete formatting trailer")
+                elif trailer_len >= 2:
+                    declared_runs_len = int.from_bytes(trailer_bytes[:2], "big")
+                    if declared_runs_len > 0 and 2 + declared_runs_len > trailer_len:
+                        result.damage.append(Damage(ctrl_z + 1, size, DamageKind.TRUNCATED,
+                                                    "incomplete formatting trailer runs", lossy=True))
+                        result.warnings.append("incomplete formatting trailer runs")
+                    elif trailer_bytes[:2] == b"\x00\x00" and trailer_len < 7:
+                        result.damage.append(Damage(ctrl_z + 1, size, DamageKind.TRUNCATED,
+                                                    "incomplete formatting trailer descriptors", lossy=True))
+                        result.warnings.append("incomplete formatting trailer descriptors")
 
         if not text_bytes:
             return result

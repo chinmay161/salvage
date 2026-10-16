@@ -32,13 +32,16 @@ class WpdDecoder(Decoder):
 
     def probe(self, data: bytes) -> float:
         """Probe for WPD: magic \\xFFWPC with WP product type and version."""
-        if len(data) < 4:
+        try:
+            if len(data) < 4:
+                return 0.0
+            if data[:4] != b"\xffWPC":
+                return 0.0
+            if len(data) >= 10 and data[8] == 1 and data[9] == 10:
+                return 1.0
+            return 0.7
+        except Exception:
             return 0.0
-        if data[:4] != b"\xffWPC":
-            return 0.0
-        if len(data) >= 10 and data[8] == 1 and data[9] == 10:
-            return 1.0
-        return 0.7
 
     def decode(self, reader: SafeReader) -> DecodeResult:
         """Decode WPD file into metadata, paragraphs, page breaks, and damage."""
@@ -87,11 +90,24 @@ class WpdDecoder(Decoder):
             return result
 
         prefix_len = doc_ptr - reader.tell()
+        trailing_pkt_off = None
+        trailing_pkt_size = 0
+
         if prefix_len > 0:
-            reader.bytes(prefix_len, "prefix_area")
+            prefix_bytes = reader.bytes(prefix_len, "prefix_area")
+            # Parse prefix packet table if present (entries start at table offset 14 / file offset 30)
+            if prefix_len >= 22:
+                num_packets = struct.unpack_from("<H", prefix_bytes, 2)[0]
+                if 1 <= num_packets <= 100:
+                    pkt_type, pkt_size, pkt_off = struct.unpack_from("<HHI", prefix_bytes, 14)
+                    if pkt_type != 0 and doc_ptr <= pkt_off:
+                        trailing_pkt_off = pkt_off
+                        trailing_pkt_size = pkt_size
 
         body_off = reader.tell()
-        body = reader.bytes(reader.remaining(), "body")
+        body_end = min(size, trailing_pkt_off) if trailing_pkt_off is not None else size
+        body_len = max(0, body_end - body_off)
+        body = reader.bytes(body_len, "body_text")
 
         current_para: list[str] = []
         rec_idx = 0
@@ -101,26 +117,23 @@ class WpdDecoder(Decoder):
             nonlocal rec_idx, para_start
             text = "".join(current_para).strip("\r")
             current_para.clear()
-            if text or rec_idx == 0:
-                para_len = max(0, end_off - para_start)
-                fields = [
-                    Field("index", rec_idx, para_start, para_len, Status.CONSISTENT),
-                    Field("type", "paragraph", para_start, para_len, Status.CONSISTENT),
-                    Field("text", text, para_start, para_len, Status.CONSISTENT),
-                ]
-                result.records.append(Record(offset=para_start, status=Status.CONSISTENT,
-                                             kind="paragraph", fields=fields))
-                rec_idx += 1
+            para_len = max(0, end_off - para_start)
+            fields = [
+                Field("index", rec_idx, para_start, para_len, Status.CONSISTENT),
+                Field("type", "paragraph", para_start, para_len, Status.CONSISTENT),
+                Field("text", text, para_start, para_len, Status.CONSISTENT),
+            ]
+            result.records.append(Record(offset=para_start, status=Status.CONSISTENT,
+                                         kind="paragraph", fields=fields))
+            rec_idx += 1
             para_start = end_off
 
         i = 0
-        body_len = len(body)
         while i < body_len:
             b = body[i]
             curr_pos = body_off + i
             if b == 0x0A:  # Hard return -> paragraph break
                 flush_para(curr_pos + 1)
-                para_start = curr_pos + 1
                 i += 1
             elif b in (0x0B, 0x0C):  # Page break
                 if current_para:
@@ -147,16 +160,6 @@ class WpdDecoder(Decoder):
                 i += 1
             elif b == 0xAA:  # Soft hyphen -> stripped
                 i += 1
-            elif b == 0x27 and i + 2 <= body_len and body[i + 1] == 0x00:
-                # Metadata / prefix packet within body (e.g. doc summary)
-                pkt_len = struct.unpack_from("<H", body, i)[0]
-                if i + 2 + pkt_len > body_len:
-                    result.damage.append(Damage(curr_pos, size, DamageKind.TRUNCATED,
-                                                f"packet at offset {curr_pos} declared length {pkt_len} exceeds file size",
-                                                lossy=True))
-                    result.warnings.append("truncated packet in body")
-                    break
-                i += 2 + pkt_len
             elif 32 <= b < 127:  # Printable ASCII
                 current_para.append(chr(b))
                 i += 1
@@ -170,9 +173,21 @@ class WpdDecoder(Decoder):
                         result.warnings.append("truncated function code")
                         break
                     i += 1
-            elif 0xD0 <= b <= 0xFF:  # Variable multi-byte function code
+            elif 0xD0 <= b <= 0xFF:  # Variable multi-byte function code with length prefix
+                if i + 4 <= body_len:
+                    fn_len = struct.unpack_from("<H", body, i + 2)[0]
+                    if fn_len >= 4 and i + fn_len <= body_len and body[i + fn_len - 1] == b:
+                        i += fn_len
+                        continue
+                    if fn_len >= 4 and i + fn_len > body_len:
+                        result.damage.append(Damage(curr_pos, size, DamageKind.TRUNCATED,
+                                                    f"function code 0x{b:02x} length {fn_len} cut short",
+                                                    lossy=True))
+                        result.warnings.append("truncated variable function code")
+                        break
+                # Fallback: search for closing delimiter byte
                 end_pos = body.find(bytes([b]), i + 1)
-                if end_pos != -1 and end_pos - i < 256:
+                if end_pos != -1:
                     i = end_pos + 1
                 else:
                     result.damage.append(Damage(curr_pos, size, DamageKind.TRUNCATED,
@@ -188,6 +203,25 @@ class WpdDecoder(Decoder):
                                         "document text ends abruptly without closing paragraph delimiter",
                                         lossy=True))
             result.warnings.append("document text truncated")
+
+        # Process trailing packet if declared
+        if trailing_pkt_off is not None:
+            if reader.remaining() > 0:
+                avail = reader.remaining()
+                reader.bytes(avail, "trailing_packet")
+                if avail < trailing_pkt_size:
+                    dmg_start = min(size, trailing_pkt_off)
+                    result.damage.append(Damage(dmg_start, size, DamageKind.TRUNCATED,
+                                                f"packet at offset {trailing_pkt_off} declared length {trailing_pkt_size} exceeds file size",
+                                                lossy=True))
+                    result.warnings.append("truncated trailing packet")
+            elif size < trailing_pkt_off + trailing_pkt_size:
+                # File cut before or inside trailing packet
+                if not result.damage:
+                    dmg_start = min(size, trailing_pkt_off)
+                    result.damage.append(Damage(dmg_start, size, DamageKind.TRUNCATED,
+                                                "missing trailing prefix packet", lossy=True))
+                    result.warnings.append("missing trailing packet")
 
         return result
 
