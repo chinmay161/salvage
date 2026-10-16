@@ -1,0 +1,29 @@
+{
+  "source_file": "clean.lb9",
+  "format": "LIBRA-98",
+  "status": "ok",
+  "metadata": {
+    "branch_id": 100,
+    "created": "1998-10-03T11:20:22",
+    "data_offset": 16,
+    "declared_record_count": 1,
+    "encoding": "cp437",
+    "version": 2
+  },
+  "records": [
+    {
+      "id": 1001,
+      "title": "Dune",
+      "author": "Frank Herbert",
+      "year": 1965,
+      "price_cents": 799,
+      "copies": 2,
+      "isbn": "0441172717",
+      "checked_out": false,
+      "deleted": false,
+      "reference_only": false,
+      "due_date": null
+    }
+  ],
+  "damage": []
+}

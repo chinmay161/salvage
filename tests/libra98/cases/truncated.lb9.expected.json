@@ -1,0 +1,22 @@
+{
+  "source_file": "truncated.lb9",
+  "format": "LIBRA-98",
+  "status": "partial",
+  "metadata": {
+    "branch_id": 100,
+    "created": "1998-10-03T11:20:22",
+    "data_offset": 16,
+    "declared_record_count": 1,
+    "encoding": "cp437",
+    "version": 2
+  },
+  "records": [],
+  "damage": [
+    {
+      "kind": "truncated",
+      "offset": 16,
+      "detail": "record 0 truncated: declared 42 bytes, 7 remaining",
+      "lossy": true
+    }
+  ]
+}

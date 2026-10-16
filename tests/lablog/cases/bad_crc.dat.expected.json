@@ -1,0 +1,57 @@
+{
+  "source_file": "bad_crc.dat",
+  "format": "LABLOG",
+  "status": "partial",
+  "metadata": {
+    "channels": [
+      {
+        "index": 0,
+        "unit": "mV"
+      }
+    ],
+    "declared_block_count": 3,
+    "events": [
+      {
+        "message": "Test start",
+        "sample": 0,
+        "severity": 1
+      }
+    ],
+    "instrument": "THERMO LOGGER",
+    "sample_interval_ms": 500,
+    "start_time_utc": "1992-10-11T05:07:43Z",
+    "version": 1
+  },
+  "records": [
+    {
+      "sample": 0,
+      "time_ms": 0,
+      "values": [
+        150.5
+      ],
+      "verified": false,
+      "issues": [
+        "crc_mismatch"
+      ]
+    },
+    {
+      "sample": 1,
+      "time_ms": 500,
+      "values": [
+        null
+      ],
+      "verified": false,
+      "issues": [
+        "crc_mismatch"
+      ]
+    }
+  ],
+  "damage": [
+    {
+      "kind": "crc_mismatch",
+      "offset": 50,
+      "detail": "block 1 CRC mismatch: stored 0x79ff, computed 0x0f4b",
+      "lossy": true
+    }
+  ]
+}

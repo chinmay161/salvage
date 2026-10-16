@@ -1,0 +1,46 @@
+{
+  "source_file": "bad_checksum.lb9",
+  "format": "LIBRA-98",
+  "status": "partial",
+  "metadata": {
+    "branch_id": 100,
+    "created": "1998-10-03T11:20:22",
+    "data_offset": 16,
+    "declared_record_count": 1,
+    "encoding": "cp437",
+    "version": 2
+  },
+  "records": [
+    {
+      "id": 745,
+      "title": "Dune",
+      "author": "Frank Herbert",
+      "year": 1965,
+      "price_cents": 799,
+      "copies": 2,
+      "isbn": "0441172717",
+      "checked_out": false,
+      "deleted": false,
+      "reference_only": false,
+      "due_date": null,
+      "verified": false,
+      "issues": [
+        "checksum_mismatch"
+      ]
+    }
+  ],
+  "damage": [
+    {
+      "kind": "checksum_mismatch",
+      "offset": 16,
+      "detail": "record 0 checksum mismatch",
+      "lossy": true
+    },
+    {
+      "kind": "checksum_mismatch",
+      "offset": 64,
+      "detail": "trailer sum16 mismatch: stored 0x0e50, computed 0x0e4f",
+      "lossy": true
+    }
+  ]
+}

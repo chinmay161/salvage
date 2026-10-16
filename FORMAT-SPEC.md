@@ -55,9 +55,277 @@ and which ranges nobody explained.
 
 ## Contents
 
+- [LIBRA-98](#libra-98)
+- [LABLOG](#lablog)
+- [EBCDIC-DUMP](#ebcdic-dump)
 - [Output format](#output-format)
 
-No format specifications have been written yet.
+## LIBRA-98
+
+### Summary
+
+LIBRA-98 is a record-based municipal library circulation catalogue format (context hint: "Municipal library circulation desk PC, about 1998"). Studied: `kit/samples/s01.dat` (289 bytes, clean), `kit/samples/s02.dat` (424 bytes, clean with complex flags), `kit/samples/s03.dat` (311 bytes, clean v2.1 with header extension), `kit/samples/s04.dat` (259 bytes, truncated at record 5), and `kit/samples/s29_almost_libra.dat` (7 bytes, negative test case).
+
+### Identification
+
+Files begin with ASCII `LB98` (`4C 42 39 38`) at offset 0x00 followed by major version 2 at 0x04. `probe()` requires at least 16 bytes, valid magic, version 2, and a data offset within bounds. If the `END!` trailer with valid 16-bit sum is detected, probe scores 1.0; otherwise 0.8 for valid header. Files shorter than 16 bytes (such as `s29_almost_libra.dat`) or with wrong magic score 0.0. Extensions `.lb9` and `.dat` serve as weak hints.
+
+### Layout
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|---|---|---|---|---|---|---|
+| 0x00 | 4 | bytes | — | magic | ASCII `LB98` | all samples |
+| 0x04 | 1 | u8 | — | version_major | Format major version (2) | all samples |
+| 0x05 | 1 | u8 | — | version_minor | Format minor version (0 in s01/s02/s04, 1 in s03) | s01-s04 |
+| 0x06 | 2 | u16 | LE | declared_record_count | Number of records declared | s01-s04 |
+| 0x08 | 2 | u16 | LE | created_date | DOS FAT date: `((d >> 9) & 0x7F) + 1980`, `(d >> 5) & 0x0F`, `d & 0x1F` | log 2026-10-16 13:43 |
+| 0x0A | 2 | u16 | LE | created_time | DOS FAT time: `(t >> 11) & 0x1F`, `(t >> 5) & 0x3F`, `(t & 0x1F) * 2` | log 2026-10-16 13:43 |
+| 0x0C | 2 | u16 | LE | data_offset | Absolute start offset of records (16 for v2.0, 40 for v2.1) | s01-s04 |
+| 0x0E | 2 | u16 | LE | branch_id | Library branch identifier | s01-s04 |
+| 0x10 | data_offset - 16 | bytes | — | header_extension | Optional banner string padded with `\x00` (e.g. `LIBSYS/98 REL 2.1`) | s03 |
+
+### Records
+
+Records start at `data_offset` and follow sequentially back to back. Each record starts with marker `0xA5`, followed by a 1-byte payload length $N$ (the number of bytes from `flags` up to and including the record checksum). Total record length is $2 + N$.
+
+Fields in order:
+- `+0x00` (1B): record marker `0xA5`
+- `+0x01` (1B): payload length $N$
+- `+0x02` (1B): flags (bit 0 = `checked_out`, bit 1 = `reference_only`, bit 2 = `deleted`)
+- `+0x03` (4B u32le): book ID
+- `+0x07` (1B u8): title length $L_T$
+- `+0x08` ($L_T$ bytes): title string (CP437)
+- `+0x08 + L_T` (1B u8): author length $L_A$
+- `+0x09 + L_T` ($L_A$ bytes): author string (CP437)
+- `+0x09 + L_T + L_A` (2B u16le): year offset from 1500 (`year = year_offset + 1500`)
+- `+0x0B + L_T + L_A` (2B u16le): price in cents
+- `+0x0D + L_T + L_A` (1B u8): copy count
+- `+0x0E + L_T + L_A` (10B ASCII): ISBN string
+- `+0x18 + L_T + L_A` (2B u16le): due date (DOS FAT date, 0 if null)
+- `+0x1A + L_T + L_A` (1B u8): record checksum (sum8 over flags through due date)
+
+### Checksums
+
+1. Record checksum: 1-byte `sum8` over all payload bytes from `flags` to `due_date` (`sum(rec[2:-1]) & 0xFF`), stored as the last byte of each record. Verified on all 22 complete records across s01–s04.
+2. File trailer checksum: 2-byte `sum16` over all bytes from file offset 0 up to `END!` (`sum(data[:idx]) & 0xFFFF`), stored little-endian at `offset + 4` following `END!`. Verified on all clean samples (s01, s02, s03).
+
+### Compression and obfuscation
+
+None. All strings are plaintext CP437, and all numbers are plain little-endian integers.
+
+### Damage handling
+
+- Truncation: If the file ends before declared records finish (e.g. `s04.dat`), or during record header/payload reads, `DamageKind.TRUNCATED` is recorded covering the unread remainder.
+- Resync: If record marker `0xA5` is missing or record length is corrupted, `salvagekit.core.resync` scans forward for `0xA5` with valid length and matching `sum8`. Corrupted bytes are reported as `DamageKind.UNPARSED_BYTES`.
+- Checksum mismatch: If a record's `sum8` fails, its status drops to `Status.UNVERIFIED` and `DamageKind.CHECKSUM_MISMATCH` is reported over the record range.
+- Trailer truncation/mismatch: A missing or corrupt `END!` trailer produces `DamageKind.TRUNCATED` or `DamageKind.CHECKSUM_MISMATCH`.
+
+### Open questions
+
+None. The binary structure, field encodings, bitflags, string character sets, and checksum formulas are fully explained and verified against all genuine samples and official reference outputs.
+
+## LABLOG
+
+### Summary
+
+LABLOG is a binary analytical-instrument data logger format (context hint: "Benchtop analytical-instrument data logger, chemistry lab, early 1990s"). Studied: `kit/samples/s05.dat` (229 bytes, clean 2-channel log from THERMO LOGGER), `kit/samples/s06.dat` (313 bytes, clean 3-channel log from FLOWCELL-2 containing dropouts), and `kit/samples/s07.dat` (334 bytes, 3-channel log from FLOWCELL-2 containing localized bit corruption in Block 5).
+
+### Identification
+
+Files begin with ASCII `LLOG` (`4C 4C 4F 47`) at offset 0x00 followed by major version 1 at 0x04. `probe()` requires at least 32 bytes, magic `LLOG`, version 1, and non-zero channel count. If the 16-bit CRC-16-CCITT at 0x1E matches bytes 0x00..0x1D, probe scores 1.0; if magic matches but header CRC is mismatched, probe scores 0.8. Extensions `.dat` and `.log` serve as hints.
+
+### Layout
+
+#### Header (32 bytes fixed)
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|---|---|---|---|---|---|---|
+| 0x00 | 4 | bytes | — | magic | ASCII `LLOG` (`4C 4C 4F 47`) | all samples |
+| 0x04 | 1 | u8 | — | version | Format major version (1) | all samples |
+| 0x05 | 1 | u8 | — | num_channels | Number of analog channels ($\ge 1$) | all samples |
+| 0x06 | 2 | u16 | LE | sample_interval | Sampling interval in centiseconds ($10\text{ ms}$ units) | all samples |
+| 0x08 | 16 | bytes | — | instrument | Null-padded ASCII instrument name | all samples |
+| 0x18 | 4 | u32 | LE | start_time | Start datetime as seconds since 1990-01-01 00:00:00 UTC | log 2026-10-16 15:43 |
+| 0x1C | 2 | u16 | LE | declared_block_count | Total number of blocks following the header | all samples |
+| 0x1E | 2 | u16 | LE | header_crc | CRC-16-CCITT over bytes 0x00..0x1D (poly 0x1021, init 0xFFFF) | log 2026-10-16 15:44 |
+
+#### Block Framing
+
+Blocks follow the 32-byte header contiguously back-to-back:
+- `+0x00` (1B): Sync marker `0xB1`
+- `+0x01` (1B): Block type (`0x03` = Channel Config, `0x01` = Data, `0x02` = Event)
+- `+0x02` (2B u16le): Payload length $L$
+- `+0x04` ($L$ bytes): Block payload
+- `+0x04 + L` (2B u16le): Trailer CRC-16-CCITT over `block[1 : 4 + L]` (type + length + payload)
+
+#### Block Types
+
+1. **Type 0x03 (Channel Configuration, Block 1):** Length is $\text{num\_channels} \times 12$. Each 12-byte descriptor contains:
+   - `+0x00` (4B ASCII): Unit name, null-padded (e.g. `mV`, `ppm`, `pH`, `kPa`, `degC`)
+   - `+0x04` (4B float32le): Linear calibration scale factor
+   - `+0x08` (4B float32le): Linear calibration offset value
+2. **Type 0x01 (Data Records):** Contains:
+   - `+0x00` (2B u16le): Start sample index
+   - `+0x02` (1B u8): Sample count $N$
+   - Followed by $N$ sample records, each consisting of $\text{num\_channels} \times 2$ bytes of signed 16-bit integers (`int16le`).
+   - Calibrated value: $\text{round}(\text{raw} \times \text{scale} + \text{offset}, 4)$.
+   - Dropout sentinel: raw `-32768` (`0x8000`) represents a dropout and maps to JSON `null`.
+   - Sample timestamp: $\text{time\_ms} = \text{sample} \times (\text{sample\_interval} \times 10)$.
+3. **Type 0x02 (Event Annotations):** Contains:
+   - `+0x00` (2B u16le): Associated sample index
+   - `+0x02` (1B u8): Severity level ($0$ = info/note, $1$ = run started, $2$ = warning/drift)
+   - `+0x03` (1B u8): Message length $M$
+   - `+0x04` ($M$ bytes ASCII): Event message text
+
+### Records
+
+Each recorded sample becomes one record containing three fields:
+- `sample`: integer sample index
+- `time_ms`: elapsed milliseconds since start time
+- `values`: array of calibrated float values (or `null` for channel dropouts)
+
+Records are emitted sequentially in sample index order.
+
+### Checksums
+
+1. **Header Checksum:** 2-byte CRC-16-CCITT (polynomial `0x1021`, initial value `0xFFFF`, no final XOR, little-endian) over bytes 0x00..0x1D (30 bytes). Stored at 0x1E..0x1F.
+2. **Block Checksums:** 2-byte CRC-16-CCITT (polynomial `0x1021`, initial value `0xFFFF`, no final XOR, little-endian) over bytes 1 through $4 + L$ of each block (type, length, and payload; excluding the marker `0xB1`). Stored at the final two bytes of each block.
+
+### Compression and obfuscation
+
+None. Strings are plaintext ASCII, timestamps and integers are little-endian binary, and analog values are linear 16-bit ADC counts.
+
+### Damage handling
+
+- **CRC Mismatch:** If a block fails its CRC check (e.g. Block 5 in `s07.dat`), `DamageKind.CRC_MISMATCH` is reported over the block range, the block's records are marked `Status.UNVERIFIED`, and the file status drops to `partial`. If header CRC fails, `DamageKind.HEADER_CHECKSUM` is reported.
+- **Truncation:** If the file ends before declared blocks finish, or cuts short inside a header or block payload, `DamageKind.TRUNCATED` is recorded over the missing or incomplete range.
+- **Lost Synchronization:** If marker `0xB1` is not found where expected, `salvagekit.core.resync` searches forward for `0xB1` followed by a valid block type, in-bounds length, and matching CRC-16-CCITT. Skipped corrupted bytes are reported as `DamageKind.UNPARSED_BYTES`.
+- **Invalid Structure:** Unknown block types produce `DamageKind.UNKNOWN_RECORD`. Mismatched block lengths or zero-channel headers produce `DamageKind.BAD_LENGTH` or `DamageKind.INVALID_VALUE`.
+
+### Open questions
+
+None. All fields, timestamps, block structures, checksum algorithms, and sample values across `s05.dat`–`s07.dat` are confirmed and fully explained.
+
+## EBCDIC-DUMP
+
+### Summary
+
+EBCDIC-DUMP is a record-based student database dump from an IBM university mainframe tape (context hint: "Dump from a university mainframe tape, 1999"). The format originates from an IBM OS/390 or MVS environment and supports both unblocked variable-length records (RECFM=V) and blocked variable-length records (RECFM=VB). Text is encoded in EBCDIC (cp037), and numeric fields utilize IBM COMP-3 packed decimal representation or big-endian binary integers.
+
+Studied samples:
+- `kit/samples/s20.000`: 287 bytes, unblocked (RECFM=V), 1 header, 5 detail records, 1 trailer.
+- `kit/samples/s21.000`: 303 bytes, blocked (RECFM=VB), 4 blocks containing 1 header, 5 detail records, 1 trailer.
+- `kit/samples/s22.000`: 210 bytes, unblocked (RECFM=V), truncated mid-record in record 4 (3 complete detail records).
+
+### Identification
+
+The format is identified by its mainframe record descriptor words and initial header record:
+- Unblocked (RECFM=V): Bytes 0..3 are an RDW declaring record length 33 (`\x00\x21\x00\x00`), followed immediately at offset 4 by header record type 'H' (`\xc8` in EBCDIC cp037).
+- Blocked (RECFM=VB): Bytes 0..3 are a BDW declaring block length `L_block >= 37` (`\x00\x55\x00\x00` in s21.000), followed at offset 4 by an RDW declaring length 33 (`\x00\x21\x00\x00`) and header record type 'H' (`\xc8`) at offset 8.
+
+The `probe()` function checks for these prefixes, validates that the header title consists of valid EBCDIC characters (spaces, uppercase Latin letters, digits), and verifies that the 8-byte run date consists of valid EBCDIC digit characters (`\xf0`..`\xf9`). Matching files score 1.0; files with matching length and type 'H' but non-digit date score 0.6. Furthermore, if the header is damaged or missing but followed by a chain of at least 2 valid detail records (RDW length 48, flags 00 00, type 'D', 6 EBCDIC digits for student_id) either at offset 0, after a BDW, or after the corrupted header, `probe()` scores 0.75. All other files score 0.0. The file extension `.000` is used solely as a tie-breaker.
+
+### Layout
+
+#### Block Descriptor Word (BDW) — RECFM=VB only
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| 0x00 | 2 | u16 | BE | block_length | Total block length including 4-byte BDW | s21.000 offsets 0x00 (85), 0x55 (100), 0xb9 (100), 0x11d (18) |
+| 0x02 | 2 | bytes | — | bdw_flags | Block descriptor flags (always `00 00`) | s21.000 |
+
+#### Record Descriptor Word (RDW) — Every record
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| 0x00 | 2 | u16 | BE | record_length | Total record length including 4-byte RDW | 33 (Header), 48 (Detail), 14 (Trailer) |
+| 0x02 | 2 | bytes | — | rdw_flags | Record descriptor flags (always `00 00`) | All samples |
+
+#### Header Record Payload (Length = 29 bytes, RDW = 33)
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| +0x00 | 1 | char | — | type | Record type indicator: 'H' (`0xc8`) | s20.000:4, s21.000:8, s22.000:4 |
+| +0x01 | 20 | string | — | title | EBCDIC cp037 string (e.g. "STUDENT EXTRACT     ") | s20.000:5..25, s20.000.json |
+| +0x15 | 8 | string | — | run_date | EBCDIC cp037 digits YYYYMMDD (e.g. "19990314") | s20.000:25..33 -> "1999-03-14" |
+
+#### Student Detail Record Payload (Length = 44 bytes, RDW = 48)
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| +0x00 | 1 | char | — | type | Record type indicator: 'D' (`0xc4`) | s20.000:37, s21.000:41, s22.000:37 |
+| +0x01 | 6 | string | — | student_id | EBCDIC cp037 digits (e.g. "909014") | s20.000:38..44 |
+| +0x07 | 20 | string | — | name | EBCDIC cp037 string, "LAST, FIRST" | s20.000:44..64 |
+| +0x1B | 5 | packed | — | dob | COMP-3 packed decimal: YYYYMMDD + sign | s20.000:64..69 (`01 97 81 01 1f`) -> 1978-10-11 |
+| +0x20 | 3 | packed | — | gpa | COMP-3 packed decimal: 2 decimals + sign | s20.000:69..72 (`00 26 3c`) -> 2.63 |
+| +0x23 | 2 | u16 | BE | credits | Earned credits count (binary integer) | s20.000:72..74 (`00 28`) -> 40 |
+| +0x25 | 1 | char | — | status | Academic status: 'G' (graduated), 'W' (withdrawn), 'A' (active) | s20.000:74..75 (`0xc7` = 'G') |
+| +0x26 | 4 | packed | — | balance | COMP-3 packed decimal: 2 decimals, sign in last nibble (C/F positive, D negative) | s20.000:75..79 (`00 69 83 6c` -> 698.36), s21.000 (`00 12 55 0d` -> -125.50) |
+| +0x2A | 2 | bytes | — | padding | Trailing spaces (`40 40`) | All detail records |
+
+#### Trailer Record Payload (Length = 10 bytes, RDW = 14)
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| +0x00 | 1 | char | — | type | Record type indicator: 'T' (`0xe3`) | s20.000:277, s21.000:293 |
+| +0x01 | 4 | packed | — | trailer_count | COMP-3 packed decimal: student record count (7 digits + sign) | s20.000:278..282 (`00 00 00 5f`) -> 5 |
+| +0x05 | 5 | packed | — | trailer_credits_total | COMP-3 packed decimal: sum of credits (9 digits + sign) | s20.000:282..287 (`00 00 00 40 2f`) -> 402, s21.000 (`00 00 00 54 6f`) -> 546 |
+
+### Records
+
+Records are sequenced as follows:
+1. Exactly one Header record ('H', RDW length 33).
+2. Zero or more Detail records ('D', RDW length 48).
+3. Exactly one Trailer record ('T', RDW length 14).
+
+In unblocked files, records are placed consecutively. In blocked files, records are packed into blocks of up to `block_length` bytes, with blocks placed consecutively.
+
+Field mappings to the contract shape (`salvagekit/core/contract_shapes.py`):
+- `student_id`: 6-character string decoded from EBCDIC cp037 digits.
+- `name`: String decoded from EBCDIC cp037, trailing whitespace stripped.
+- `dob`: ISO date string `YYYY-MM-DD` decoded from the 5-byte COMP-3 packed decimal field.
+- `gpa`: Float decoded from 3-byte COMP-3 packed decimal, divided by 100.0.
+- `credits`: Unsigned 16-bit big-endian integer.
+- `status`: 1-character string decoded from EBCDIC cp037.
+- `balance`: Float decoded from 4-byte COMP-3 packed decimal (positive for signs 0x0C, 0x0F, 0x0A, 0x0E; negative for 0x0D, 0x0B), divided by 100.0.
+
+Graded metadata keys:
+- `title`: String from header payload, trailing whitespace stripped.
+- `run_date`: ISO date string `YYYY-MM-DD` from 8-character header date string.
+- `trailer_count`: Integer from trailer packed decimal field.
+- `trailer_credits_total`: Integer from trailer packed decimal field.
+
+### Checksums
+
+There are no per-record checksums or CRCs in this mainframe format. Data integrity and completeness are verified via the trailer record:
+1. `trailer_count` cross-check: Must equal the number of detail records decoded.
+2. `trailer_credits_total` cross-check: Must equal the exact sum of `credits` across all decoded detail records.
+
+When both trailer cross-checks pass and no records were damaged, the records are marked `Status.CONSISTENT`.
+
+### Compression and obfuscation
+
+None. Numbers are encoded in standard IBM System/370-390 COMP-3 (packed decimal) format: two BCD decimal digits per byte, with the least significant nibble storing the sign (0x0C, 0x0F, 0x0A, 0x0E = positive; 0x0D, 0x0B = negative).
+
+### Damage handling
+
+1. **Truncation:** If a file ends prematurely (e.g. `s22.000` where the 4th record is cut short at offset 210 with 33 of 48 bytes available):
+   - All preceding complete records are preserved.
+   - The truncated range `[offset, file_size)` is reported as `DamageKind.TRUNCATED` (lossy=True).
+   - If truncation explains a missing trailer or record count difference, only `TRUNCATED` damage is reported (no duplicate `COUNT_MISMATCH`), following the s04 answer key convention.
+2. **Trailer Count Mismatch:** If the trailer is reached and `trailer_count != len(records)`, `DamageKind.COUNT_MISMATCH` is reported over the trailer count field bytes.
+3. **Trailer Credits Mismatch:** If `trailer_credits_total != sum(credits)`, `DamageKind.COUNT_MISMATCH` is reported over the trailer credits total field bytes. We chose `COUNT_MISMATCH` because `trailer_credits_total` represents an aggregate tally/count of credit units, directly fitting the contract's definition of declared count disagreement.
+4. **Invalid Values:**
+   - Invalid COMP-3 packed decimal digits (nibble > 9 in non-sign positions) or invalid sign nibbles.
+   - Impossible dates (e.g. invalid month or day).
+   - GPA out of the standard 0.00..4.00 range.
+   When any such corruption is detected, the affected field is set to `None` (`Status.LOST`), the record is marked `Status.UNVERIFIED` with `issues: [DamageKind.INVALID_VALUE]`, and `DamageKind.INVALID_VALUE` damage is recorded over the field's file offset.
+5. **Mid-stream Corruption and Resync:** If an invalid record marker or length is encountered, `salvagekit.core.resync` scans for the next valid record boundary using marker and structure checks (`RDW == \x00\x30\x00\x00` and byte +4 == `\xc4`, or `RDW == \x00\x0e\x00\x00` and byte +4 == `\xe3`). Skipped bytes are reported as `DamageKind.UNPARSED_BYTES`.
+
+### Open questions
+
+1. **Text encoding (cp037 vs cp500):** The 7 byte values that differ between cp037 and cp500 (0x4a, 0x4f, 0x5a, 0x5f, 0xb0, 0xba, 0xbb) do not appear in any text field across the three samples. Consequently, cp037 and cp500 decode the samples identically. cp037 was chosen as standard IBM US/Canada mainframe encoding, but whether an international variant (cp500) might be used on other files from the same generator remains inconclusive.
+2. **Flags in BDW/RDW:** The 2-byte flags in the BDW and RDW (bytes 2-3) are always `00 00` in the provided samples. In IBM mainframe specifications, these can occasionally represent segment control codes (spanning records across blocks), but spanned records are not observed in these samples.
 
 ## Output format
 
