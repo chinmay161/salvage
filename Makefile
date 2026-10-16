@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: test api run build build-offline docker-run docker-test docker-smoke golden golden-update
+.PHONY: test api run build build-offline docker-run docker-test docker-smoke golden golden-update conform bench
 
 test:
 	$(PY) tools/task.py test
@@ -33,3 +33,11 @@ golden:
 # make golden-update FORMAT=stub
 golden-update:
 	$(PY) tools/task.py golden-update $(FORMAT)
+
+# make conform [NAME=stub] [ARGS=--verbose]
+conform:
+	$(PY) tools/task.py conform $(NAME) $(ARGS)
+
+# make bench [ARGS=--docker]
+bench:
+	$(PY) tools/task.py bench $(ARGS)

@@ -10,6 +10,8 @@
     python tools/task.py docker-smoke         host vs container end-to-end check
     python tools/task.py golden [FORMAT]      golden tests (all formats or one)
     python tools/task.py golden-update FORMAT regenerate one format's expectations
+    python tools/task.py conform [NAME] [--verbose] [--quick]  decoder conformance suite
+    python tools/task.py bench [--docker]     throughput, --jobs 1 vs --jobs auto
 
 Uses ``sys.executable``, so it works whatever the interpreter is called.
 This is a dev tool: unknown commands print usage and exit with code 2;
@@ -25,6 +27,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,6 +50,12 @@ commands:
                         check both outputs are byte-identical
   golden [FORMAT]       run golden tests (all formats, or just FORMAT)
   golden-update FORMAT  regenerate tests/FORMAT/cases/*.expected.json
+  conform [NAME] [--verbose] [--quick]
+                        check every decoder (or NAME) against the contract
+                        (docs/conformance.md); exit 1 if any FAILs.
+                        --quick: the merge gate's smaller run (no samples/)
+  bench [--docker]      time the CLI on 525 generated files with --jobs 1
+                        and --jobs auto (--docker: inside the image)
 """
 
 
@@ -216,6 +225,81 @@ def cmd_docker_smoke() -> int:
     return 1 if failed else 0
 
 
+# -- bench -------------------------------------------------------------------
+
+def bench_inputs() -> dict[str, bytes]:
+    """The fixed bench input set: 500 small STUB files, 20 random 1 MiB files,
+    5 truncated STUB files (relative POSIX path -> bytes)."""
+    magic = b"SALVAGE-STUB\x00"
+    files: dict[str, bytes] = {}
+    for i in range(500):
+        files[f"stub/{i // 100}/s{i:03d}.stub"] = magic + struct.pack("<H3I", 3, i, i + 1, i + 2)
+    rng = random.Random("salvage-bench")
+    for i in range(20):
+        files[f"random/r{i:02d}.bin"] = rng.randbytes(1024 * 1024)
+    for i in range(5):
+        files[f"truncated/t{i}.stub"] = magic + struct.pack("<H2I", 5 + i, i, i)
+    return files
+
+
+def _stats_line(stderr: str) -> dict[str, str]:
+    for line in reversed(stderr.splitlines()):
+        if line.startswith("stats: "):
+            return dict(part.split("=", 1) for part in line[len("stats: "):].split())
+    return {}
+
+
+def cmd_bench(use_docker: bool) -> int:
+    if use_docker and not _docker_ready():
+        return 1
+    tmp = tempfile.mkdtemp(prefix="salvage-bench-")
+    try:
+        inp = os.path.join(tmp, "in")
+        files = bench_inputs()
+        for rel, data in files.items():
+            path = os.path.join(inp, *rel.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(data)
+        where = "docker (salvage:dev)" if use_docker else f"host ({sys.platform})"
+        print(f"bench: {len(files)} files on {where}, host cpu_count={os.cpu_count()}")
+        print(f"{'jobs':<6} {'seconds':>8} {'files/s':>8} {'peak workers':>13}")
+        rows, trees = [], {}
+        for jobs in ("1", "auto"):
+            out = os.path.join(tmp, f"out-{jobs}")
+            start = time.perf_counter()
+            if use_docker:
+                os.makedirs(out, exist_ok=True)
+                proc = subprocess.run(["docker", *docker_run_args(inp, out), "--jobs", jobs,
+                                       "--stats"], capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace",
+                                      timeout=DOCKER_RUN_TIMEOUT)
+            else:
+                proc = subprocess.run([sys.executable, "-m", "salvage.cli", "--jobs", jobs,
+                                       "--stats", inp, out], env=_env(), capture_output=True,
+                                      text=True, encoding="utf-8", errors="replace",
+                                      timeout=DOCKER_RUN_TIMEOUT)
+            seconds = time.perf_counter() - start
+            stats = _stats_line(proc.stderr)
+            label = jobs if jobs == "1" else f"auto={stats.get('jobs', '?')}"
+            rows.append((label, seconds, stats))
+            trees[jobs] = _read_tree(out)
+            print(f"{label:<6} {seconds:>8.2f} {len(files) / seconds:>8.1f} "
+                  f"{stats.get('peak_workers', '?'):>13}", flush=True)
+            if proc.returncode != 0 or stats.get("files") != str(len(files)):
+                print(f"error: run with --jobs {jobs} exited {proc.returncode}, "
+                      f"stats {stats}", file=sys.stderr)
+                return 1
+        same = trees["1"] == trees["auto"]
+        print(f"outputs --jobs 1 vs --jobs auto: {'byte-identical' if same else 'DIFFER'}")
+        auto_rate = len(files) / rows[1][1]
+        if use_docker and auto_rate < 20:
+            print(f"note: docker --jobs auto is under 20 files/s ({auto_rate:.1f})")
+        return 0 if same else 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # -- golden ------------------------------------------------------------------
 
 def cmd_golden(fmt: str | None) -> int:
@@ -275,6 +359,11 @@ def main(argv: list[str]) -> int:
         return cmd_golden(args[0] if args else None)
     if cmd == "golden-update" and len(args) == 1:
         return cmd_golden_update(args[0])
+    if cmd == "bench" and args in ([], ["--docker"]):
+        return cmd_bench(use_docker=bool(args))
+    if cmd == "conform":
+        # From the caller's directory, so relative --cases-root etc. mean what they say.
+        return subprocess.call([sys.executable, "-m", "tests.conformance", *args], env=_env())
     if cmd == "golden-update":
         print("error: golden-update needs exactly one FORMAT (it never updates "
               "all formats at once)", file=sys.stderr)
