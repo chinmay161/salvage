@@ -1,0 +1,19 @@
+{
+  "source_file": "truncated.dat",
+  "format": "VAULT",
+  "status": "partial",
+  "metadata": {
+    "entry_count": 1,
+    "flags": 0,
+    "xor_key": 66
+  },
+  "records": [],
+  "damage": [
+    {
+      "kind": "oob_pointer",
+      "offset": 8,
+      "detail": "table offsets out of bounds (index=47, string_table=37, size=25)",
+      "lossy": true
+    }
+  ]
+}

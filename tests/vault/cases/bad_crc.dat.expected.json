@@ -1,0 +1,33 @@
+{
+  "source_file": "bad_crc.dat",
+  "format": "VAULT",
+  "status": "partial",
+  "metadata": {
+    "entry_count": 1,
+    "flags": 0,
+    "xor_key": 66
+  },
+  "records": [
+    {
+      "id": 101,
+      "name": "hello.txt",
+      "type": "text",
+      "size": 13,
+      "sha256": "f1b36701d5b2da5d7efc8855f48b8be73cc265a38450515299df30bfcafe104b",
+      "compressed": false,
+      "text": "Hello, Vault!",
+      "verified": false,
+      "issues": [
+        "crc_mismatch"
+      ]
+    }
+  ],
+  "damage": [
+    {
+      "kind": "crc_mismatch",
+      "offset": 20,
+      "detail": "record 101 (hello.txt): CRC-32 mismatch: stored 0xb0cc7b03, computed 0x4f3384fc",
+      "lossy": false
+    }
+  ]
+}
