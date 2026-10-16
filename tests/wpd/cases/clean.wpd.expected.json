@@ -1,0 +1,23 @@
+{
+  "source_file": "clean.wpd",
+  "format": "WPD",
+  "status": "ok",
+  "metadata": {
+    "major_version": 10,
+    "minor_version": 2,
+    "product_type": 1
+  },
+  "records": [
+    {
+      "index": 0,
+      "type": "paragraph",
+      "text": "First paragraph."
+    },
+    {
+      "index": 1,
+      "type": "paragraph",
+      "text": "Second paragraph with notes."
+    }
+  ],
+  "damage": []
+}

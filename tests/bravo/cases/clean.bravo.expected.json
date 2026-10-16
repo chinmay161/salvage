@@ -1,0 +1,25 @@
+{
+  "source_file": "clean.bravo",
+  "format": "BRAVO",
+  "status": "ok",
+  "metadata": {},
+  "records": [
+    {
+      "index": 0,
+      "text": "Paragraph one."
+    },
+    {
+      "index": 1,
+      "text": "Paragraph two with details."
+    },
+    {
+      "index": 2,
+      "text": ""
+    },
+    {
+      "index": 3,
+      "text": "Paragraph four."
+    }
+  ],
+  "damage": []
+}

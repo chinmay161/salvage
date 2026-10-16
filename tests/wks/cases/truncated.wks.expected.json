@@ -1,0 +1,25 @@
+{
+  "source_file": "truncated.wks",
+  "format": "WKS",
+  "status": "partial",
+  "metadata": {
+    "version_code": "0x0404"
+  },
+  "records": [
+    {
+      "cell": "A1",
+      "col": 0,
+      "row": 0,
+      "type": "integer",
+      "value": 42
+    }
+  ],
+  "damage": [
+    {
+      "kind": "truncated",
+      "offset": 17,
+      "detail": "file truncated before EOF record",
+      "lossy": true
+    }
+  ]
+}

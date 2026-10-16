@@ -8,8 +8,218 @@ Every hypothesis we tested while reverse-engineering the formats, including the 
 
 | Format | Entries | Confirmed | Rejected | Inconclusive |
 |--------|--------:|----------:|---------:|-------------:|
-| **Total** | **0** | **0** | **0** | **0** |
+| WKS | 8 | 7 | 1 | 0 |
+| WPD | 7 | 6 | 1 | 0 |
+| BRAVO | 5 | 4 | 1 | 0 |
+| **Total** | **20** | **17** | **3** | **0** |
 
 ## Entries
 
-No entries yet.
+### 2026-10-16 13:53 — [WKS] Record framing is 16-bit opcode and 16-bit length little-endian?
+
+**Hypothesis:** WKS stream consists of 2-byte opcode and 2-byte payload length in little-endian byte order.
+
+**Tried:** Read 4-byte headers starting at offset 0x0000 across `kit/samples/s11.wks`, `s12.wks`, and `s13.wks` and hopped payload lengths.
+
+**Evidence:** Offset 0x0000 begins with `00 00 02 00` (`opcode=0x0000`, `length=2`). Advancing by `4 + length` lands cleanly on next record `06 00 08 00` at offset 0x0006 in all 3 samples. In `s11.wks`, walking consecutive records terminates cleanly at EOF opcode `0x0001` (length 0) at offset 0x01c0 (total 452 bytes). Reading big-endian fails on record 1.
+
+**Result:** CONFIRMED. The 4-byte header is `<HH` (opcode, length).
+
+### 2026-10-16 13:57 — [WKS] Header opcode 0x0000 version code and opcode 0x0006 range boundaries
+
+**Hypothesis:** Opcode 0x0000 contains spreadsheet version `0x0404`, and opcode 0x0006 contains spreadsheet coordinate range.
+
+**Tried:** Unpacked uint16le values from payload of 0x0000 and 0x0006 in `s11.wks` and compared with reference JSON `kit/expected_outputs/s11.wks.json`.
+
+**Evidence:** Opcode 0x0000 payload is `04 04` (`0x0404`), matching `"version_code": "0x0404"` in `s11.wks.json`. Opcode 0x0006 payload in `s11.wks` has 8 bytes `00 00 00 00 03 00 04 00`, which unpacks as 4 uint16le `(0, 0, 3, 4)` representing col 0..3 (A..D) and row 0..4 (1..5), matching `"declared_range": "A1:D5"`. In `s12.wks`, payload is `00 00 00 00 02 00 06 00` representing `A1:C7`.
+
+**Result:** CONFIRMED. Range bounds are 4 uint16le values `(col_start, row_start, col_end, row_end)`.
+
+### 2026-10-16 13:58 — [BRAVO] Paragraph separator is CR (0x0D) rather than LF (0x0A)
+
+**Hypothesis:** Paragraphs in Xerox Alto Bravo files are delimited by ASCII carriage return `\r` (`0x0D`).
+
+**Tried:** Examined text stream bytes before Ctrl-Z in `kit/samples/s16.bravo` and `s17.bravo`.
+
+**Evidence:** In `s16.bravo`, lines are separated by `0x0D`: `"To: Alto users\r"`, `"From: Documentation\r"`, `"\r"`, `"The new editor supports looks...\r"`, `"End of memo.\r"`. No `0x0A` (line feed) bytes appear anywhere in the file. Similarly, in `s17.bravo`, all 5 paragraphs end with `0x0D`.
+
+**Result:** CONFIRMED. Paragraph boundary is `\r` (0x0D).
+
+### 2026-10-16 14:02 — [WKS] Opcode 0x0008 represents column width settings
+
+**Hypothesis:** Opcode 0x0008 stores column width overrides.
+
+**Tried:** Unpacked 3-byte payload of opcode 0x0008 in `s11.wks` (`00 00 0e`) and `s12.wks` (`00 00 14` and `01 00 0c`).
+
+**Evidence:** In `s11.wks`, byte 0-1 is column index 0 (`A`), and byte 2 is `0x0e` (14). This matches `"column_widths": {"A": 14}` in `s11.wks.json`. In `s12.wks`, column 0 has width 20 and column 1 has width 12.
+
+**Result:** CONFIRMED. Structure is `<HB` (col uint16le, width uint8).
+
+### 2026-10-16 14:02 — [BRAVO] Ctrl-Z (0x1A) separates document text from formatting trailer
+
+**Hypothesis:** ASCII Ctrl-Z (`0x1A`) marks the boundary between plain paragraph text and the trailing formatting descriptor block.
+
+**Tried:** Located `0x1A` in `s16.bravo` and `s17.bravo` and inspected preceding and following bytes.
+
+**Evidence:** In `s16.bravo`, `0x1A` appears at offset 128 (0x80). Bytes 0..127 contain ASCII text. Bytes 129..143 contain 15 binary trailer bytes. In `s17.bravo`, `0x1A` appears at offset 127 (0x7F), followed by 17 binary trailer bytes.
+
+**Result:** CONFIRMED. Text terminates at `0x1A`.
+
+### 2026-10-16 14:03 — [WPD] File header signature and document pointer layout
+
+**Hypothesis:** WordPerfect documents begin with 4-byte signature `FF 57 50 43` (`\xFFWPC`) followed by a 4-byte pointer to document text at offset 0x04.
+
+**Tried:** Unpacked header fields of `kit/samples/s14.wpd` (288 bytes) and `kit/samples/s15.wpd` (136 bytes).
+
+**Evidence:** Both files begin with `ff 57 50 43`. Bytes 4..7 unpack as uint32le `0x00000030` (48). Reading document text at offset 48 yields `"MEMORANDUM\n..."` in both samples.
+
+**Result:** CONFIRMED. Header magic is `\xFFWPC` and document text starts at uint32le offset stored at 0x04.
+
+### 2026-10-16 14:05 — [WKS] Cell opcodes: 0x0c (blank), 0x0d (integer), 0x0e (number), 0x0f (label), 0x10 (formula)
+
+**Hypothesis:** Opcodes 0x0c, 0x0d, 0x0e, 0x0f, and 0x10 correspond to blank, integer, number, label, and formula cells with format byte at offset 0.
+
+**Tried:** Parsed cell payloads in `s11.wks` and cross-referenced coordinates, types, and values with `kit/expected_outputs/s11.wks.json`.
+
+**Evidence:**
+- Opcode 0x0d (len 7): `ff 01 00 01 00 2f 00` gives format 0xff, col 1, row 1, int16 value 47 (cell B2). All 4 integer cells match reference.
+- Opcode 0x0e (len 13): `22 02 00 01 00 3d 0a d7 a3 70 fd 33 40` gives format 0x22, col 2, row 1, 64-bit float IEEE 754 value 19.99 (cell C2). All 4 float cells match reference.
+- Opcode 0x0f (len 11..15): `ff 00 00 00 00 27 49 74 65 6d 00` gives format 0xff, col 0, row 0, alignment `'` (0x27), text `"Item\0"` (cell A1).
+- Opcode 0x10 (len 27): `22 03 00 01 00 <8-byte float 939.53> 0c 00 <12 raw bytes>` gives cached float value 939.53 and 12 formula bytes `"010100010001020001000b03"`.
+- Opcode 0x0c (len 5): in `s12.wks`, col 2, row 2 is blank.
+
+**Result:** CONFIRMED. All cell types match reference expected outputs.
+
+### 2026-10-16 14:06 — [WPD] Header metadata: file type, version, and encryption key
+
+**Hypothesis:** Header offsets 0x08..0x0C store document type, version numbers, and encryption key.
+
+**Tried:** Unpacked bytes 8..12 across `s14.wpd` and `s15.wpd`.
+
+**Evidence:** Byte 8 is `0x01` (WordPerfect document type). Byte 9 is `0x0a` (10, indicating WordPerfect 5.0/5.1 architecture). Byte 10 is `0x02` (minor version). Bytes 11..12 are `0x0000` (uint16le encryption key). When non-zero, this key signifies password protection.
+
+**Result:** CONFIRMED. Key at offset 0x0b-0x0c detects encryption without cracking.
+
+### 2026-10-16 14:06 — [BRAVO] Formatting trailer ends with a carriage return
+
+**Hypothesis:** The project brief suggests that the formatting trailer ends at a carriage return.
+
+**Tried:** Inspected the final bytes of `s16.bravo` and `s17.bravo`.
+
+**Evidence:** The last bytes of `s16.bravo` are `0f 06 00`. The last bytes of `s17.bravo` are `00 61 00`. Neither file has `0x0D` (`\r`) anywhere in the trailer block.
+
+**Result:** REJECTED. The trailer consists of binary descriptor records extending to EOF without a trailing carriage return.
+
+### 2026-10-16 14:08 — [WKS] Label alignment prefixes strip from cell value
+
+**Hypothesis:** The first character of label payload after coordinates is an alignment prefix that must be mapped to `alignment` and stripped from `value`.
+
+**Tried:** Inspected byte 5 of opcode 0x0f in `s11.wks` and `s12.wks`.
+
+**Evidence:**
+- `0x27` (`'`): left-aligned (`'Item'` becomes `value: "Item", alignment: "left"`).
+- `0x22` (`"`): right-aligned (in `s12.wks`: `"right-aligned"`).
+- `0x5e` (`^`): centered (in `s12.wks`: `^INVENTORY`).
+- `0x5c` (`\`): repeat fill (in `s12.wks`: `\-`).
+
+**Result:** CONFIRMED. Prefix character determines alignment and is stripped from the output value.
+
+### 2026-10-16 14:08 — [WPD] Document pointer endianness hypothesis
+
+**Hypothesis:** The document text pointer at header offset 0x04 is stored as a big-endian 32-bit integer (`>I`), matching Motorola 68000 heritage.
+
+**Tried:** Unpacked bytes 0x04..0x08 as `>I` on `s14.wpd` and `s15.wpd` (hex `30 00 00 00`).
+
+**Evidence:** Unpacking `30 00 00 00` as big-endian yields offset `0x30000000` (805,306,368 bytes), which far exceeds sample file sizes (288 bytes and 136 bytes). Little-endian `<I` yields `0x00000030` (48 bytes), which points directly to the start of body text `"MEMORANDUM\n"`.
+
+**Result:** REJECTED. The pointer is 32-bit unsigned little-endian `<I`, not big-endian.
+
+### 2026-10-16 14:10 — [WPD] Hard returns vs soft returns in paragraph reconstruction
+
+**Hypothesis:** Hard return `0x0A` marks paragraph boundaries, while soft return `0x0D` represents wrapped lines within a paragraph.
+
+**Tried:** Analyzed line endings in paragraph 3 of `s14.wpd`: `"The quarterly returns are due on the\r15th. Late submissions will be\rreturned unprocessed.\n"`.
+
+**Evidence:** The sentence wraps across lines using `0x0D` after `"the"` and `"be"`. Replacing `0x0D` with space produces a coherent paragraph: `"The quarterly returns are due on the 15th. Late submissions will be returned unprocessed."`. Hard return `0x0A` cleanly terminates the paragraph.
+
+**Result:** CONFIRMED. Hard return `0x0A` defines paragraph boundaries; soft return `0x0D` is a soft line wrap.
+
+### 2026-10-16 14:10 — [BRAVO] Empty paragraphs produce empty text strings
+
+**Hypothesis:** Consecutive carriage returns (`\r\r`) represent empty paragraphs that must be preserved as records with `text: ""`.
+
+**Tried:** Analyzed paragraph sequence in `s16.bravo` and `s17.bravo`.
+
+**Evidence:** In `s16.bravo`, paragraph 1 is `"From: Documentation"`, followed by `\r\r`, then paragraph 3. The empty line at index 2 separates memo headers from memo body, matching standard document layout.
+
+**Result:** CONFIRMED. Empty paragraphs are emitted as `text: ""`.
+
+### 2026-10-16 14:12 — [WKS] Number format 0x22 should be emitted on all cells
+
+**Hypothesis:** Every formatted cell (such as format byte 0x22 for currency) should emit a `number_format` field in reference JSON.
+
+**Tried:** Checked `kit/expected_outputs/s11.wks.json` on cell C2 and D2 (both having format byte 0x22).
+
+**Evidence:** `s11.wks.json` has only `{'cell', 'col', 'row', 'type', 'value'}` for C2 and `{'cell', 'col', 'row', 'type', 'cached_value', 'formula_raw_hex'}` for D2. No `number_format` key exists anywhere in `s11.wks.json`. Emitting `number_format` causes a key mismatch against reference output.
+
+**Result:** REJECTED. In reference output calibration, standard currency/general format is not emitted as an explicit `number_format` string unless required by specific date formatting.
+
+### 2026-10-16 14:13 — [WPD] WordPerfect function codes filtering
+
+**Hypothesis:** Function codes beginning in `0xC0..0xFF` (such as `\xc3\x0c\xc3` and `\xc4\x0c\xc4`) are formatting instructions and must be stripped from recovered plain text.
+
+**Tried:** Inspected `"Subject: Revised \xc3\x0c\xc3filing deadline\xc4\x0c\xc4\n"` in `s14.wpd`.
+
+**Evidence:** `\xc3\x0c\xc3` is Font Attribute On (Underline) and `\xc4\x0c\xc4` is Font Attribute Off. Stripping these 3-byte codes yields `"Subject: Revised filing deadline"`.
+
+**Result:** CONFIRMED. Fixed and variable function codes are stripped to yield clean text.
+
+### 2026-10-16 14:14 — [BRAVO] Formatting trailer character run offsets
+
+**Hypothesis:** Binary trailer contains format runs with character start offsets and lengths.
+
+**Tried:** Cross-referenced trailer uint16 values with styled words in the text.
+
+**Evidence:** In `s16.bravo`, the word `"Bold"` starts at character index 67 (0x43). The trailer contains `43 00` (`0x0043` = 67). In `s17.bravo`, the word `"Ethernet"` starts at index 9 (`09 00`), and `"2.9 Mbps"` starts at index 42 (`2a 00`). Both appear in the trailer preceded by run descriptors.
+
+**Result:** CONFIRMED. Trailer encodes formatting runs referencing character offsets.
+
+### 2026-10-16 14:15 — [WKS] Lotus 1-2-3 date epoch and leap year bug
+
+**Hypothesis:** Lotus date serial numbers count days from 1899-12-30 due to the 1900 leap year bug.
+
+**Tried:** Tested date conversion algorithms against Lotus 1-2-3 specification where serial 1 is 1900-01-01 and serial 60 is treated as 1900-02-29.
+
+**Evidence:** For date numbers >= 60, formula `date(1899, 12, 30) + timedelta(days=n)` correctly aligns post-1900 dates to ISO `YYYY-MM-DD`. For date serial 34181, this yields `1993-07-31`.
+
+**Result:** CONFIRMED. Lotus epoch base is 1899-12-30 for dates after 1900-02-28.
+
+### 2026-10-16 14:16 — [WPD] Special character codes: hard space and soft hyphen
+
+**Hypothesis:** Byte `0xA0` represents a non-breaking space and `0xAA` represents a soft hyphen.
+
+**Tried:** Analyzed `"Ref:\tMr.\xa0Smith, co\xaaoperation notes attached.\n"` in `s14.wpd`.
+
+**Evidence:** `0xA0` separates `"Mr."` and `"Smith"`, functioning as a hard space. `0xAA` occurs inside `"co-operation"` / `"cooperation"`, functioning as a discretionary soft hyphen that is omitted when unhyphenated.
+
+**Result:** CONFIRMED. `0xA0` decodes to space `' '` and `0xAA` is stripped.
+
+### 2026-10-16 14:18 — [WKS] Handling damage: unknown opcodes and truncated files
+
+**Hypothesis:** Opcode 0x00fa in `s12.wks` is an unknown record that can be safely skipped, and `s13.wks` is truncated at offset 401.
+
+**Tried:** Parsed `s12.wks` skipping unknown opcode 0x00fa by length 6, and parsed `s13.wks` checking file bounds.
+
+**Evidence:** In `s12.wks` at offset 0x0073 (115), opcode 0x00fa declares length 6. Skipping 6 bytes lands on opcode 0x000f at offset 0x007d. All subsequent records parse cleanly to EOF. In `s13.wks`, at offset 0x0191 (401), opcode 0x000e declares length 13 but file ends at 409 (only 4 bytes remain), triggering damage `truncated` at offset 401.
+
+**Result:** CONFIRMED. Resync and damage reporting succeed without crashing.
+
+### 2026-10-16 14:19 — [WPD] Detecting file truncation in s15.wpd
+
+**Hypothesis:** `s15.wpd` is a truncated version of `s14.wpd` that ends abruptly during the 4th paragraph.
+
+**Tried:** Checked EOF state and ending byte sequence of `s15.wpd` (136 bytes).
+
+**Evidence:** `s15.wpd` ends at offset 136 with `"Please note: \xc3\x0c\xc3deadline"`. It lacks a terminating `0x0A`, closing attribute code, or full text sentence. The decoder emits recovered paragraphs 0..3 and marks file as `partial` with `truncated` damage at offset 136.
+
+**Result:** CONFIRMED. `s15.wpd` is truncated.

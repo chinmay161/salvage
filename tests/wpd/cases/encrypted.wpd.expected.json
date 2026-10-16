@@ -1,0 +1,19 @@
+{
+  "source_file": "encrypted.wpd",
+  "format": "WPD",
+  "status": "unsupported",
+  "metadata": {
+    "major_version": 10,
+    "minor_version": 2,
+    "product_type": 1
+  },
+  "records": [],
+  "damage": [
+    {
+      "kind": "encrypted",
+      "offset": 11,
+      "detail": "password protected / encrypted document",
+      "lossy": true
+    }
+  ]
+}

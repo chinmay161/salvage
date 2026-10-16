@@ -1,0 +1,27 @@
+{
+  "source_file": "clean.wks",
+  "format": "WKS",
+  "status": "ok",
+  "metadata": {
+    "declared_range": "A1:B2",
+    "version_code": "0x0404"
+  },
+  "records": [
+    {
+      "cell": "A1",
+      "col": 0,
+      "row": 0,
+      "type": "integer",
+      "value": 42
+    },
+    {
+      "cell": "B1",
+      "col": 1,
+      "row": 0,
+      "type": "label",
+      "value": "TEST",
+      "alignment": "left"
+    }
+  ],
+  "damage": []
+}

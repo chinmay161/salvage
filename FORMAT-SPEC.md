@@ -55,9 +55,188 @@ and which ranges nobody explained.
 
 ## Contents
 
+- [WKS](#wks)
+- [WPD](#wpd)
+- [BRAVO](#bravo)
 - [Output format](#output-format)
 
-No format specifications have been written yet.
+## WKS
+
+### Summary
+
+WKS is the native spreadsheet file format of Lotus 1-2-3 Release 1A for DOS (context hint: "Spreadsheet saved on a DOS PC, early 1990s"). The format consists of a sequential record stream beginning with a Beginning-of-File (BOF) record and concluding with an End-of-File (EOF) record. Studied samples: `kit/samples/s11.wks` (452 bytes, valid), `kit/samples/s12.wks` (409 bytes, contains unknown record 0x00fa and blank cell), `kit/samples/s13.wks` (409 bytes, truncated during number record at offset 401). Reference output calibrated: `kit/expected_outputs/s11.wks.json`.
+
+### Identification
+
+Files begin with a 4-byte BOF record header: opcode `0x0000` (`00 00`) followed by length `0x0002` (`02 00`), and a 2-byte version payload `0x0404` (`04 04`).
+- Magic bytes at offset 0: `00 00 02 00 04 04`.
+- Probing:
+  - Exact match of 6-byte sequence `00 00 02 00 04 04` gives probe score 1.0.
+  - Opcode 0x0000 with length 2 but unrecognized version gives probe score 0.6.
+  - Extension `.wks` serves as a tie-breaker hint only.
+
+### Layout
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| 0x00 | 2 | u16 | LE | bof_opcode | BOF record opcode (`0x0000`) | confirmed in s11, s12, s13 |
+| 0x02 | 2 | u16 | LE | bof_length | BOF payload length (2 bytes) | confirmed in s11, s12, s13 |
+| 0x04 | 2 | u16 | LE | version_code | Lotus spreadsheet version (`0x0404`) | s11.wks.json metadata |
+| 0x06 | 4 | header | LE | next_record | Next record header (opcode, length) | stream continues until EOF |
+
+### Records
+
+Every record consists of a 4-byte header (`<HH`, 2-byte opcode and 2-byte length) followed by `length` payload bytes:
+- `0x0000` (BOF): Length 2, payload is version code `0x0404`.
+- `0x0001` (EOF): Length 0, marks end of spreadsheet data.
+- `0x0006` (RANGE): Length 8, 4 uint16le values `(col_start, row_start, col_end, row_end)`. Offsets define spreadsheet bounds (e.g., `(0, 0, 3, 4)` maps to `"A1:D5"`).
+- `0x0008` (COLUMN_WIDTH): Length 3, `<HB` (column uint16le, width uint8).
+- `0x000c` (BLANK): Length 5, format byte (1 byte), col (uint16le), row (uint16le).
+- `0x000d` (INTEGER): Length 7, format byte (1 byte), col (uint16le), row (uint16le), integer value (int16le).
+- `0x000e` (NUMBER): Length 13, format byte (1 byte), col (uint16le), row (uint16le), float value (64-bit IEEE 754 double little-endian).
+- `0x000f` (LABEL): Length >= 6, format byte (1 byte), col (uint16le), row (uint16le), alignment prefix (1 byte: `'` left, `"` right, `^` center, `\` repeat), followed by null-terminated ASCII string.
+- `0x0010` (FORMULA): Length >= 15, format byte, col, row, cached_value (64-bit IEEE 754 double little-endian), formula length (uint16le), raw formula bytecode (hex-encoded in output).
+- Global settings opcodes (`0x0002` CALC_MODE, `0x0003` CALC_ORDER, `0x0004` SPLIT, `0x0005` SYNC, `0x0007` WINDOW, `0x000b` QUERY): Skipped or stored in metadata.
+
+Cell coordinates are 0-based integers for `col` and `row` fields, while cell labels are 1-based alphanumeric strings (e.g., `col: 1, row: 1` -> `"B2"`).
+
+### Checksums
+
+None. Lotus 1-2-3 WKS records do not contain CRC or checksum fields. Record integrity is verified via framing bounds and EOF termination.
+
+### Compression and obfuscation
+
+None. All integer, floating point, and text data are stored uncompressed.
+
+### Damage handling
+
+- **Unknown opcodes:** Safely skipped using their declared length. Reported as `unknown_record` damage with `lossy: false`. File status becomes `partial`.
+- **Truncation:** If a record's declared length exceeds remaining file bytes, or file ends before record header can be read, decoding halts. Reported as `truncated` damage covering `[offset, file_size)` with `lossy: true`. File status becomes `partial`.
+- **Resynchronization:** In damaged streams, the decoder scans for plausible record headers matching valid opcodes and reasonable lengths.
+
+### Open questions
+
+- Full formula opcode expression parsing: Formula AST evaluation is out of scope per contract; raw bytecode is preserved in `formula_raw_hex`.
+- Detailed date formatting flags: Date-formatted cells use special format bytes (bits 4-6 = 7) and map day serial numbers from epoch 1899-12-30.
+
+## WPD
+
+### Summary
+
+WPD is the document format of WordPerfect 5.x for DOS and Windows (context hint: "Word-processor document from a government office, early 1990s; some files are password-protected"). Files contain a 16-byte fixed file identification header, followed by document metadata/prefix packets, and a document text stream beginning at a designated text pointer offset. Studied samples: `kit/samples/s14.wpd` (288 bytes, valid document with formatting codes and document summary), `kit/samples/s15.wpd` (136 bytes, truncated document ending mid-sentence).
+
+### Identification
+
+Files begin with a 4-byte signature:
+- Bytes 0..3: `FF 57 50 43` (`\xFFWPC`).
+- Offset 0x08: Document file type `0x01` (WordPerfect document file).
+- Offset 0x09: Major version `0x0A` (WordPerfect 5.0/5.1).
+- Probing:
+  - Exact match of `\xFFWPC` with document type 1 and major version 10 yields probe score 1.0.
+  - `\xFFWPC` alone yields probe score 0.7.
+  - Extension `.wpd` is a tie-breaker hint only.
+
+### Layout
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| 0x00 | 4 | bytes | — | magic | Header signature (`\xFFWPC`) | s14.wpd, s15.wpd |
+| 0x04 | 4 | u32 | LE | doc_pointer | Pointer to start of document body text | 0x00000030 (48) in s14, s15 |
+| 0x08 | 1 | u8 | — | product_type | Product type (1 = WordPerfect) | s14.wpd, s15.wpd |
+| 0x09 | 1 | u8 | — | file_type | File type / major version (10 = WP 5.x) | s14.wpd, s15.wpd |
+| 0x0A | 1 | u8 | — | minor_version | Minor version (2) | s14.wpd, s15.wpd |
+| 0x0B | 2 | u16 | LE | encrypt_key | Encryption key (0 = unencrypted) | 0x0000 in s14, s15 |
+| 0x0D | 3 | bytes | — | reserved | Header padding/reserved bytes | zeroed in samples |
+| 0x10 | variable | bytes | — | prefix_area | Prefix packets (styles, summary) | up to doc_pointer |
+| doc_ptr | variable | bytes | — | body | Document text and function code stream | extends to EOF |
+
+### Records
+
+Per `OUTPUT-CONTRACT.md`, the output consists of:
+- `records`: List of objects:
+  - `index`: 0-based integer indicating record sequence.
+  - `type`: String, either `"paragraph"` or `"page_break"`.
+  - `text`: String containing the recovered paragraph text (or empty string for page breaks).
+
+Structural rules:
+- Hard return `0x0A` terminates a paragraph.
+- Soft return `0x0D` represents soft line wraps and is converted to space.
+- Page break codes (`0x0B`, `0x0C`) emit a separate record with `type: "page_break"` and `text: ""`.
+- Function codes: Fixed 3-byte codes (`0xC0`..`0xC7`) and variable-length multibyte codes (`0xD0`..`0xFF`) are stripped from output text.
+- Special character encodings: Hard space `0xA0` decodes to `' '`, tab `0x09` decodes to `'\t'`, soft hyphen `0xAA` is stripped.
+
+### Checksums
+
+None. WordPerfect 5.x headers and text streams do not use CRC or checksum fields.
+
+### Compression and obfuscation
+
+- Standard files are uncompressed.
+- Password-protected documents use an encryption key stored at offset 0x0B. When `encrypt_key != 0`, the file is encrypted. Per project requirements, no password cracking is attempted; the file is reported as `unsupported=True` with damage kind `encrypted`.
+
+### Damage handling
+
+- **Encryption:** Detected via non-zero encryption key at offset 0x0B. Handled cleanly with status `unsupported` and damage kind `encrypted`.
+- **Out-of-bounds text pointer:** If `doc_pointer` exceeds file size, reported as `bounds` damage; status becomes `failed`.
+- **Truncation:** If document text ends without a closing paragraph delimiter (as in `s15.wpd`), all preceding text is recovered, status is set to `partial`, and `truncated` damage is reported at the break point.
+- **Malformed function codes:** If variable-length function code boundaries are invalid, resynchronization skips damaged bytes to the next valid text or return delimiter, reporting `unparsed_bytes`.
+
+### Open questions
+
+- Extended character sets: WordPerfect multi-character character sets (e.g. math, box drawing, Cyrillic) use extended multi-byte escapes; standard ASCII and Latin-1 ranges are confirmed.
+
+## BRAVO
+
+### Summary
+
+BRAVO is the document format of the Bravo editor developed at Xerox PARC for the Xerox Alto workstation in the 1970s (context hint: "Document from a 1970s research-lab workstation editor"). The format stores document text in plain ASCII up to a Ctrl-Z (`0x1A`) marker, followed by a binary formatting trailer containing style run descriptors ("looks"). Studied samples: `kit/samples/s16.bravo` (144 bytes), `kit/samples/s17.bravo` (145 bytes).
+
+### Identification
+
+Files are identified by:
+- Plain text printable ASCII stream ending with a carriage return (`\r`) followed by Ctrl-Z (`0x1A`).
+- Presence of ASCII headers or document lines with CR delimiters without line feeds (`\n`).
+- Binary formatting trailer immediately following `0x1A`.
+- Probing:
+  - If text is valid ASCII, CR-delimited, and followed by `0x1A` and a binary trailer: probe score 0.9.
+  - If `.bravo` extension matches: tie-break hint.
+
+### Layout
+
+| Offset | Size | Type | Endian | Field | Meaning | Evidence |
+|--------|------|------|--------|-------|---------|----------|
+| 0x00 | variable | ASCII | — | text_stream | Paragraph text separated by `\r` (0x0D) | s16.bravo, s17.bravo |
+| n | 1 | u8 | — | ctrl_z | Trailer delimiter (`0x1A`) | at offset 128 in s16, 127 in s17 |
+| n + 1 | variable | bytes | LE | trailer | Binary formatting trailer ("looks") | follows 0x1A to EOF |
+
+### Records
+
+Per `OUTPUT-CONTRACT.md`, the output consists of:
+- `records`: List of objects, one per CR-terminated paragraph:
+  - `index`: 0-based integer indicating paragraph sequence.
+  - `text`: String containing the paragraph content, stripped of trailing carriage return.
+- Optional `metadata.format_runs`:
+  - List of run objects: `start`, `length`, `looks[]` (e.g., `"bold"`, `"italic"`), `font`.
+
+Empty paragraphs (represented by consecutive `\r` bytes) produce a record with `text: ""`.
+
+### Checksums
+
+None. Bravo files rely on structural delimiters (`\r`, `0x1A`) and do not contain cryptographic or CRC checksums.
+
+### Compression and obfuscation
+
+None. Text is uncompressed 7-bit ASCII.
+
+### Damage handling
+
+- **Missing Ctrl-Z delimiter:** If file contains valid CR-terminated text but lacks `0x1A`, decode text paragraphs as recovered, flag `truncated` damage, and set status to `partial`.
+- **Corrupted trailer:** Malformed binary trailer bytes do not affect text recovery; parsing skips corrupted trailer entries and reports `unparsed_bytes` damage.
+- **Premature EOF:** Unclosed paragraphs at EOF are recovered with trailing damage reported.
+
+### Open questions
+
+- Variable trailer structures: In some Alto documents, paragraph properties (margins, tabs) may accompany character looks; full catalog of Alto font IDs (e.g. Gacha, Helvetica, Times Roman) depends on workstation font configuration.
 
 ## Output format
 
